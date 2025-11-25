@@ -4,6 +4,7 @@ const WebSocket = require("ws");
 
 const app = express();
 const PORT = 8000;
+app.use(express.json());
 
 app.get("/v1/ping", (req, res) => {
   res.send("ok");
@@ -27,4 +28,30 @@ wss.on("connection", (socket) => {
 
 server.listen(PORT, "0.0.0.0", () => {
   console.log(`listening on ${PORT}`);
+});
+
+// Live room info proxy
+app.post("/api/live/info", async (req, res) => {
+  try {
+    const token = req.body && req.body.token;
+    const xToken = req.body && req.body.xToken;
+    if (!token || typeof token !== "string") {
+      return res.status(400).json({ err_no: 40001, err_tips: "invalid token", data: null });
+    }
+    const resp = await fetch("https://webcast.bytedance.com/api/webcastmate/info", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-token": xToken || token
+      },
+      body: JSON.stringify({ token })
+    });
+    const body = await resp.json().catch(() => ({}));
+    if (!resp.ok) {
+      return res.status(200).json(body);
+    }
+    return res.status(200).json(body);
+  } catch (e) {
+    return res.status(500).json({ err_no: -1, err_tips: "internal error", data: null });
+  }
 });
