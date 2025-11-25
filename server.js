@@ -5,6 +5,7 @@ const WebSocket = require("ws");
 const app = express();
 const PORT = 8000;
 app.use(express.json());
+app.use(express.urlencoded({ extended: false }));
 
 app.get("/v1/ping", (req, res) => {
   res.send("ok");
@@ -28,6 +29,16 @@ wss.on("connection", (socket) => {
 
 server.listen(PORT, "0.0.0.0", () => {
   console.log(`listening on ${PORT}`);
+});
+
+app.use((err, req, res, next) => {
+  if (err && err.type === "entity.parse.failed") {
+    return res.status(400).json({ err_no: 40001, err_tips: "invalid json body", data: null });
+  }
+  if (err instanceof SyntaxError) {
+    return res.status(400).json({ err_no: 40001, err_tips: "invalid body", data: null });
+  }
+  next(err);
 });
 
 // Live room info proxy
