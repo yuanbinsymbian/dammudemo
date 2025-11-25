@@ -3,9 +3,9 @@ const http = require("http");
 const WebSocket = require("ws");
 
 const app = express();
-const PORT = process.env.PORT || 8080;
+const PORT = 8000;
 
-app.get("/health", (req, res) => {
+app.get("/v1/ping", (req, res) => {
   res.send("ok");
 });
 
