@@ -100,6 +100,23 @@ app.post(WS_BACKEND_PATH, async (req, res) => {
     return res.status(400).json({ err_no: 40001, err_msg: "invalid event", data: null });
   }
   const payload = req.body || {};
+  const sessionId = req.headers["x-tt-sessionid"];
+  const base = `${req.protocol}://${req.get("host")}`;
+  const isPing = (p) => {
+    if (typeof p === "string") return p.trim().toLowerCase() === "ping";
+    if (p && typeof p.type === "string") return p.type.trim().toLowerCase() === "ping";
+    return false;
+  };
+  if (sessionId && isPing(payload)) {
+    await fetch(`${base}/ws/push_data`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "X-TT-WS-SESSIONIDS": JSON.stringify([String(sessionId)])
+      },
+      body: JSON.stringify({ type: "pong", ts: Date.now() })
+    }).catch(() => {});
+  }
   return res.status(200).json({ err_no: 0, err_msg: "success", data: payload });
 });
 
