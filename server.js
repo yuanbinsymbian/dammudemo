@@ -22,10 +22,32 @@ wss.on("connection", (socket) => {
 
   socket.on("message", (msg) => {
     const text = msg.toString();
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch (_) {}
+    if (data && data.type === "join" && data.roomId) {
+      socket.roomId = String(data.roomId);
+      if (data.openId) socket.openId = String(data.openId);
+      socket.send(JSON.stringify({ type: "joined", roomId: socket.roomId }));
+      return;
+    }
+    if (data && data.type === "leave") {
+      delete socket.roomId;
+      socket.send(JSON.stringify({ type: "left" }));
+      return;
+    }
+    if (data && data.type === "say" && data.roomId && data.payload) {
+      const target = String(data.roomId);
+      wss.clients.forEach((client) => {
+        if (client.readyState === WebSocket.OPEN && client.roomId === target) {
+          client.send(JSON.stringify({ type: "message", payload: data.payload }));
+        }
+      });
+      return;
+    }
     wss.clients.forEach((client) => {
-      if (client.readyState === WebSocket.OPEN) {
-        client.send(text);
-      }
+      if (client.readyState === WebSocket.OPEN) client.send(text);
     });
   });
 });
@@ -155,6 +177,33 @@ app.post("/api/ws/group/push", async (req, res) => {
     const r = await fetch(`${base}/ws/group/push_data`, { method: "POST", headers, body: JSON.stringify(payload ?? {}) });
     const b = await r.json().catch(() => ({}));
     return res.status(200).json(b);
+  } catch (e) {
+    return res.status(500).json({ err_no: -1, err_msg: "internal error", data: null });
+  }
+});
+
+app.post("/live_data_callback", async (req, res) => {
+  try {
+    const body = req.body || {};
+    const roomId = String(
+      (body && body.room_id) ||
+        (body && body.data && body.data.room_id) ||
+        (body && body.data && body.data.info && body.data.info.room_id) ||
+        ""
+    );
+    const payload = { type: "live_data", data: body };
+    if (roomId) {
+      wss.clients.forEach((client) => {
+        if (client.readyState === WebSocket.OPEN && client.roomId === roomId) {
+          client.send(JSON.stringify(payload));
+        }
+      });
+    } else {
+      wss.clients.forEach((client) => {
+        if (client.readyState === WebSocket.OPEN) client.send(JSON.stringify(payload));
+      });
+    }
+    return res.status(200).json({ err_no: 0, err_msg: "success", data: "" });
   } catch (e) {
     return res.status(500).json({ err_no: -1, err_msg: "internal error", data: null });
   }
