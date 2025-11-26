@@ -160,6 +160,25 @@ app.post("/api/ws/group/push", async (req, res) => {
   }
 });
 
+app.post("/api/ws/get_conn_id", async (req, res) => {
+  try {
+    const base = `${req.protocol}://${req.get("host")}`;
+    const { service_id, env_id, token } = req.body || {};
+    if (!service_id || !env_id) {
+      return res.status(400).json({ err_no: 40001, err_msg: "missing service_id or env_id", data: null });
+    }
+    const r = await fetch(`${base}/ws/get_conn_id`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ service_id: String(service_id), env_id: String(env_id), token })
+    });
+    const b = await r.json().catch(() => ({}));
+    return res.status(200).json(b);
+  } catch (e) {
+    return res.status(500).json({ err_no: -1, err_msg: "internal error", data: null });
+  }
+});
+
 // Access token cache and fetcher
 let ACCESS_TOKEN = null;
 let ACCESS_TOKEN_EXPIRES_AT = 0;
