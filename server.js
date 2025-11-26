@@ -49,19 +49,34 @@ app.post("/api/live/info", async (req, res) => {
     if (!token || typeof token !== "string") {
       return res.status(400).json({ err_no: 40001, err_tips: "invalid token", data: null });
     }
-    const resp = await fetch("https://webcast.bytedance.com/api/webcastmate/info", {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-token": xToken || token
-      },
-      body: JSON.stringify({ token })
-    });
-    const body = await resp.json().catch(() => ({}));
-    if (!resp.ok) {
-      return res.status(200).json(body);
+    let headerXToken = xToken;
+    if (!headerXToken) {
+      const at = await fetchAccessToken(false);
+      if (at && at.access_token) {
+        headerXToken = at.access_token;
+      } else {
+        return res.status(200).json(at || { err_no: 40020, err_tips: "access_token unavailable", data: null });
+      }
     }
-    return res.status(200).json(body);
+    const callOnce = async (xt) => {
+      const r = await fetch("https://webcast.bytedance.com/api/webcastmate/info", {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-token": xt },
+        body: JSON.stringify({ token })
+      });
+      const b = await r.json().catch(() => ({}));
+      return { ok: r.ok, body: b };
+    };
+    let first = await callOnce(headerXToken);
+    const expired = first && first.body && (first.body.errcode === 40004 || /access token is expired/i.test(String(first.body.errmsg)));
+    if (expired && !xToken) {
+      const at2 = await fetchAccessToken(true);
+      if (at2 && at2.access_token) {
+        const second = await callOnce(at2.access_token);
+        return res.status(200).json(second.body);
+      }
+    }
+    return res.status(200).json(first.body);
   } catch (e) {
     return res.status(500).json({ err_no: -1, err_tips: "internal error", data: null });
   }
