@@ -96,18 +96,4 @@ async function fetchAccessToken(force = false) {
   return { access_token: ACCESS_TOKEN, expires_at: ACCESS_TOKEN_EXPIRES_AT };
 }
 
-// Protected endpoint to get access_token
-app.get("/api/access_token", async (req, res) => {
-  try {
-    const adminKey = process.env.ADMIN_KEY;
-    if (adminKey && req.headers["x-admin-key"] !== adminKey) {
-      return res.status(401).json({ err_no: 401, err_tips: "unauthorized", data: null });
-    }
-    const force = req.query.force === "1";
-    const r = await fetchAccessToken(force);
-    const status = r && r.err_no ? 200 : 200;
-    return res.status(status).json(r);
-  } catch (e) {
-    return res.status(500).json({ err_no: -1, err_tips: "internal error", data: null });
-  }
-});
+// No public route for access_token; use fetchAccessToken() internally only.
