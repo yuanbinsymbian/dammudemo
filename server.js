@@ -6,6 +6,7 @@ const app = express();
 const PORT = 8000;
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
+const WS_BACKEND_PATH = process.env.WS_BACKEND_PATH || "/ws/backend";
 
 app.get("/v1/ping", (req, res) => {
   res.send("ok");
@@ -80,6 +81,26 @@ app.post("/api/live/info", async (req, res) => {
   } catch (e) {
     return res.status(500).json({ err_no: -1, err_tips: "internal error", data: null });
   }
+});
+
+app.get(WS_BACKEND_PATH, async (req, res) => {
+  const e = req.headers["x-tt-event-type"];
+  if (e === "connect") {
+    return res.status(200).json({ err_no: 0, err_msg: "success", data: "" });
+  }
+  if (e === "disconnect") {
+    return res.status(200).json({ err_no: 0, err_msg: "success", data: "" });
+  }
+  return res.status(400).json({ err_no: 40001, err_msg: "invalid event", data: null });
+});
+
+app.post(WS_BACKEND_PATH, async (req, res) => {
+  const e = req.headers["x-tt-event-type"];
+  if (e !== "uplink") {
+    return res.status(400).json({ err_no: 40001, err_msg: "invalid event", data: null });
+  }
+  const payload = req.body || {};
+  return res.status(200).json({ err_no: 0, err_msg: "success", data: payload });
 });
 
 // Access token cache and fetcher
