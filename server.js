@@ -66,3 +66,48 @@ app.post("/api/live/info", async (req, res) => {
     return res.status(500).json({ err_no: -1, err_tips: "internal error", data: null });
   }
 });
+
+// Access token cache and fetcher
+let ACCESS_TOKEN = null;
+let ACCESS_TOKEN_EXPIRES_AT = 0;
+
+async function fetchAccessToken(force = false) {
+  const now = Date.now();
+  if (!force && ACCESS_TOKEN && ACCESS_TOKEN_EXPIRES_AT - now > 60_000) {
+    return { access_token: ACCESS_TOKEN, expires_at: ACCESS_TOKEN_EXPIRES_AT };
+  }
+  const appid = process.env.DOUYIN_APP_ID;
+  const secret = process.env.DOUYIN_APP_SECRET;
+  if (!appid || !secret) {
+    return { err_no: 40020, err_tips: "missing appid or secret", data: null };
+  }
+  const resp = await fetch("https://developer.toutiao.com/api/apps/v2/token", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ appid, secret, grant_type: "client_credential" })
+  });
+  const body = await resp.json().catch(() => ({}));
+  if (!resp.ok || body.err_no !== 0 || !body.data || !body.data.access_token) {
+    return body;
+  }
+  ACCESS_TOKEN = body.data.access_token;
+  const ttl = (body.data.expires_in || 7200) * 1000;
+  ACCESS_TOKEN_EXPIRES_AT = Date.now() + Math.max(ttl - 300_000, 60_000);
+  return { access_token: ACCESS_TOKEN, expires_at: ACCESS_TOKEN_EXPIRES_AT };
+}
+
+// Protected endpoint to get access_token
+app.get("/api/access_token", async (req, res) => {
+  try {
+    const adminKey = process.env.ADMIN_KEY;
+    if (adminKey && req.headers["x-admin-key"] !== adminKey) {
+      return res.status(401).json({ err_no: 401, err_tips: "unauthorized", data: null });
+    }
+    const force = req.query.force === "1";
+    const r = await fetchAccessToken(force);
+    const status = r && r.err_no ? 200 : 200;
+    return res.status(status).json(r);
+  } catch (e) {
+    return res.status(500).json({ err_no: -1, err_tips: "internal error", data: null });
+  }
+});
