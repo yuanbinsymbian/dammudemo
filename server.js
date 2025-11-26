@@ -7,6 +7,7 @@ const PORT = 8000;
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 const WS_BACKEND_PATH = process.env.WS_BACKEND_PATH || "/ws/backend";
+const WS_ON_CONNECT_PATH = process.env.WS_ON_CONNECT_PATH || "/ws/on_connect";
 
 app.get("/v1/ping", (req, res) => {
   res.send("ok");
@@ -118,6 +119,45 @@ app.post(WS_BACKEND_PATH, async (req, res) => {
     }).catch(() => {});
   }
   return res.status(200).json({ err_no: 0, err_msg: "success", data: payload });
+});
+
+app.post(WS_ON_CONNECT_PATH, async (req, res) => {
+  const connId = req.headers["x-tt-ws-conn-id"];
+  return res.status(200).json({ err_no: 0, err_msg: "success", data: String(connId || "") });
+});
+
+app.post("/api/ws/push", async (req, res) => {
+  try {
+    const base = `${req.protocol}://${req.get("host")}`;
+    const { sessionIds, openIds, payload } = req.body || {};
+    if ((!Array.isArray(sessionIds) || sessionIds.length === 0) && (!Array.isArray(openIds) || openIds.length === 0)) {
+      return res.status(400).json({ err_no: 40001, err_msg: "missing targets", data: null });
+    }
+    const headers = { "content-type": "application/json" };
+    if (Array.isArray(sessionIds) && sessionIds.length > 0) headers["X-TT-WS-SESSIONIDS"] = JSON.stringify(sessionIds.map(String));
+    if (Array.isArray(openIds) && openIds.length > 0) headers["X-TT-WS-OPENIDS"] = JSON.stringify(openIds.map(String));
+    const r = await fetch(`${base}/ws/push_data`, { method: "POST", headers, body: JSON.stringify(payload ?? {}) });
+    const b = await r.json().catch(() => ({}));
+    return res.status(200).json(b);
+  } catch (e) {
+    return res.status(500).json({ err_no: -1, err_msg: "internal error", data: null });
+  }
+});
+
+app.post("/api/ws/group/push", async (req, res) => {
+  try {
+    const base = `${req.protocol}://${req.get("host")}`;
+    const { groupName, groupValue, payload } = req.body || {};
+    if (!groupName || !groupValue) {
+      return res.status(400).json({ err_no: 40001, err_msg: "missing group", data: null });
+    }
+    const headers = { "content-type": "application/json", "X-TT-WS-GROUPNAME": String(groupName), "X-TT-WS-GROUPVALUE": String(groupValue) };
+    const r = await fetch(`${base}/ws/group/push_data`, { method: "POST", headers, body: JSON.stringify(payload ?? {}) });
+    const b = await r.json().catch(() => ({}));
+    return res.status(200).json(b);
+  } catch (e) {
+    return res.status(500).json({ err_no: -1, err_msg: "internal error", data: null });
+  }
 });
 
 // Access token cache and fetcher
