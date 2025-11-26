@@ -8,6 +8,7 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 const WS_BACKEND_PATH = process.env.WS_BACKEND_PATH || "/ws/backend";
 const WS_ON_CONNECT_PATH = process.env.WS_ON_CONNECT_PATH || "/ws/on_connect";
+const WS_GATEWAY_BASE = process.env.WS_GATEWAY_BASE || "https://ws-push.dyc.ivolces.com";
 
 app.get("/v1/ping", (req, res) => {
   res.send("ok");
@@ -102,14 +103,13 @@ app.post(WS_BACKEND_PATH, async (req, res) => {
   }
   const payload = req.body || {};
   const sessionId = req.headers["x-tt-sessionid"];
-  const base = `${req.protocol}://${req.get("host")}`;
   const isPing = (p) => {
     if (typeof p === "string") return p.trim().toLowerCase() === "ping";
     if (p && typeof p.type === "string") return p.type.trim().toLowerCase() === "ping";
     return false;
   };
   if (sessionId && isPing(payload)) {
-    await fetch(`${base}/ws/push_data`, {
+    await fetch(`${WS_GATEWAY_BASE}/ws/push_data`, {
       method: "POST",
       headers: {
         "content-type": "application/json",
@@ -128,7 +128,7 @@ app.post(WS_ON_CONNECT_PATH, async (req, res) => {
 
 app.post("/api/ws/push", async (req, res) => {
   try {
-    const base = `${req.protocol}://${req.get("host")}`;
+    const base = WS_GATEWAY_BASE;
     const { sessionIds, openIds, payload } = req.body || {};
     if ((!Array.isArray(sessionIds) || sessionIds.length === 0) && (!Array.isArray(openIds) || openIds.length === 0)) {
       return res.status(400).json({ err_no: 40001, err_msg: "missing targets", data: null });
@@ -146,7 +146,7 @@ app.post("/api/ws/push", async (req, res) => {
 
 app.post("/api/ws/group/push", async (req, res) => {
   try {
-    const base = `${req.protocol}://${req.get("host")}`;
+    const base = WS_GATEWAY_BASE;
     const { groupName, groupValue, payload } = req.body || {};
     if (!groupName || !groupValue) {
       return res.status(400).json({ err_no: 40001, err_msg: "missing group", data: null });
@@ -162,7 +162,7 @@ app.post("/api/ws/group/push", async (req, res) => {
 
 app.post("/api/ws/get_conn_id", async (req, res) => {
   try {
-    const base = `${req.protocol}://${req.get("host")}`;
+    const base = WS_GATEWAY_BASE;
     const { service_id, env_id, token } = req.body || {};
     if (!service_id || !env_id) {
       return res.status(400).json({ err_no: 40001, err_msg: "missing service_id or env_id", data: null });
