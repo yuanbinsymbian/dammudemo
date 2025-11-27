@@ -26,6 +26,13 @@ wss.on("connection", (socket) => {
     try {
       data = JSON.parse(text);
     } catch (_) {}
+    if (data && data.type) {
+      console.log("ws_uplink", { type: String(data.type), ts: Date.now() });
+    } else {
+      console.log("ws_uplink", { type: "unknown", raw: text, ts: Date.now() });
+    }
+
+
     if (data && data.type === "join" && data.token && !data.roomId) {
       const tk = String(data.token);
       if (tk.startsWith("DEBUG_")) {
