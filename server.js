@@ -57,6 +57,20 @@ wss.on("connection", (socket) => {
       console.log("ws_uplink", { type: "unknown", raw: text, ts: Date.now() });
     }
 
+    if (data && data.type === "ping") {
+      socket.isAlive = true; lastSeen = Date.now();
+      const pong = { type: "pong", ts: Date.now() };
+      console.log("ws_downlink", { type: "pong", roomId: socket.roomId || null, ts: pong.ts });
+      socket.send(JSON.stringify(pong));
+      return;
+    }
+    if (!data && text && text.trim().toLowerCase() === "ping") {
+      socket.isAlive = true; lastSeen = Date.now();
+      const pong = { type: "pong", ts: Date.now() };
+      console.log("ws_downlink", { type: "pong", roomId: socket.roomId || null, ts: pong.ts });
+      socket.send(JSON.stringify(pong));
+      return;
+    }
 
     if (data && data.type === "join" && data.token && !data.roomId) {
       const tk = String(data.token);
