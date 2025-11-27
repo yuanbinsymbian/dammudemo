@@ -44,6 +44,7 @@ wss.on("connection", (socket) => {
           socket.roomId = ridStr;
           if (data.openId) socket.openId = String(data.openId);
           console.log("ws_join", { roomId: ridStr, openId: socket.openId || null, via: "token_liveinfo", ts: Date.now() });
+          console.log("ws_downlink", { type: "joined", roomId: ridStr, ts: Date.now() });
           socket.send(JSON.stringify({ type: "joined", roomId: socket.roomId, roomIdStr: ridStr }));
         } else {
           socket.send(JSON.stringify({ type: "join_failed", body: r }));
@@ -55,12 +56,14 @@ wss.on("connection", (socket) => {
       socket.roomId = String(data.roomId);
       if (data.openId) socket.openId = String(data.openId);
       console.log("ws_join", { roomId: socket.roomId, openId: socket.openId || null, via: "roomId", ts: Date.now() });
+      console.log("ws_downlink", { type: "joined", roomId: String(socket.roomId), ts: Date.now() });
       socket.send(JSON.stringify({ type: "joined", roomId: socket.roomId, roomIdStr: String(socket.roomId) }));
       return;
     }
     if (data && data.type === "leave") {
       console.log("ws_leave", { roomId: socket.roomId || null, openId: socket.openId || null, ts: Date.now() });
       delete socket.roomId;
+      console.log("ws_downlink", { type: "left", roomId: socket.roomId || null, ts: Date.now() });
       socket.send(JSON.stringify({ type: "left" }));
       return;
     }
@@ -247,7 +250,7 @@ app.post("/live_data_callback", async (req, res) => {
         (body && body.data && body.data.info && body.data.info.room_id) ||
         ""
     );
-    console.log("live_data_callback", { roomId: roomId || null, ts: Date.now() });
+    console.log("live_data_callback", { roomId: roomId || null, payload: body, ts: Date.now() });
     const payload = { type: "live_data", data: body };
     if (roomId) {
       wss.clients.forEach((client) => {
