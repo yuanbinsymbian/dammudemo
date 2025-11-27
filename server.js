@@ -26,10 +26,25 @@ wss.on("connection", (socket) => {
     try {
       data = JSON.parse(text);
     } catch (_) {}
+    if (data && data.type === "join" && data.token && !data.roomId) {
+      (async () => {
+        const r = await fetchLiveInfoByToken(String(data.token));
+        const info = r && r.data && r.data.info;
+        if (info && (info.room_id_str || info.room_id !== undefined)) {
+          const ridStr = info.room_id_str || String(info.room_id);
+          socket.roomId = ridStr;
+          if (data.openId) socket.openId = String(data.openId);
+          socket.send(JSON.stringify({ type: "joined", roomId: socket.roomId, roomIdStr: ridStr }));
+        } else {
+          socket.send(JSON.stringify({ type: "join_failed", body: r }));
+        }
+      })();
+      return;
+    }
     if (data && data.type === "join" && data.roomId) {
       socket.roomId = String(data.roomId);
       if (data.openId) socket.openId = String(data.openId);
-      socket.send(JSON.stringify({ type: "joined", roomId: socket.roomId }));
+      socket.send(JSON.stringify({ type: "joined", roomId: socket.roomId, roomIdStr: String(socket.roomId) }));
       return;
     }
     if (data && data.type === "leave") {
@@ -262,6 +277,41 @@ async function fetchAccessToken(force = false) {
   const ttl = (body.data.expires_in || 7200) * 1000;
   ACCESS_TOKEN_EXPIRES_AT = Date.now() + Math.max(ttl - 300_000, 60_000);
   return { access_token: ACCESS_TOKEN, expires_at: ACCESS_TOKEN_EXPIRES_AT };
+}
+
+async function fetchLiveInfoByToken(token, overrideXToken) {
+  const doCall = async (xt) => {
+    const r = await fetch("https://webcast.bytedance.com/api/webcastmate/info", {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-token": xt },
+      body: JSON.stringify({ token })
+    });
+    const b = await r.json().catch(() => ({}));
+    try {
+      const info = b && b.data && b.data.info;
+      if (info && info.room_id !== undefined && info.room_id !== null) {
+        const rid = info.room_id;
+        b.data.info.room_id_str = typeof rid === "string" ? rid : String(rid);
+      }
+    } catch (_) {}
+    return { ok: r.ok, body: b };
+  };
+  let headerXToken = overrideXToken;
+  if (!headerXToken) {
+    const at = await fetchAccessToken(false);
+    if (at && at.access_token) headerXToken = at.access_token; else return at || { err_no: 40020, err_tips: "access_token unavailable", data: null };
+  }
+  const first = await doCall(headerXToken);
+  const body = first.body;
+  const expired = body && (body.errcode === 40004 || /access token is expired/i.test(String(body.errmsg)));
+  if (expired && !overrideXToken) {
+    const at2 = await fetchAccessToken(true);
+    if (at2 && at2.access_token) {
+      const second = await doCall(at2.access_token);
+      return second.body;
+    }
+  }
+  return body;
 }
 
 // No public route for access_token; use fetchAccessToken() internally only.
