@@ -302,14 +302,16 @@ app.post("/api/ws/group/push", async (req, res) => {
 app.post("/live_data_callback", async (req, res) => {
   try {
     const body = req.body || {};
-    const roomId = String(
+    const headerRoomId = req.headers["x-roomid"] ? String(req.headers["x-roomid"]) : "";
+    const headerMsgType = req.headers["x-msg-type"] ? String(req.headers["x-msg-type"]) : null;
+    const roomId = headerRoomId || String(
       (body && body.room_id) ||
         (body && body.data && body.data.room_id) ||
         (body && body.data && body.data.info && body.data.info.room_id) ||
         ""
     );
-    console.log("live_data_callback", { roomId: roomId || null, payload: body, ts: Date.now() });
-    const payload = { type: "live_data", data: body };
+    console.log("live_data_callback", { roomId: roomId || null, msgType: headerMsgType, payload: body, ts: Date.now() });
+    const payload = { type: "live_data", msgType: headerMsgType, data: body };
     if (roomId) {
       wss.clients.forEach((client) => {
         if (client.readyState === WebSocket.OPEN && client.roomId === roomId) {
