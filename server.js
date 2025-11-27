@@ -11,6 +11,8 @@ const WS_ON_CONNECT_PATH = process.env.WS_ON_CONNECT_PATH || "/ws/on_connect";
 const WS_GATEWAY_BASE = process.env.WS_GATEWAY_BASE || "https://ws-push.dyc.ivolces.com";
 const WS_HEARTBEAT_INTERVAL_MS = parseInt(process.env.WS_HEARTBEAT_INTERVAL_MS || "20000", 10);
 const WS_HEARTBEAT_IDLE_TIMEOUT_MS = parseInt(process.env.WS_HEARTBEAT_IDLE_TIMEOUT_MS || "120000", 10);
+const GATEWAY_PING_INTERVAL_MS = parseInt(process.env.GATEWAY_PING_INTERVAL_MS || "30000", 10);
+const gatewaySessions = new Map();
 
 app.get("/v1/ping", (req, res) => {
   res.send("ok");
@@ -232,9 +234,11 @@ app.post("/api/live/info", async (req, res) => {
 app.get(WS_BACKEND_PATH, async (req, res) => {
   const e = req.headers["x-tt-event-type"];
   if (e === "connect") {
+    const sid = req.headers["x-tt-sessionid"]; if (sid) { gatewaySessions.set(String(sid), { lastSeen: Date.now() }); }
     return res.status(200).json({ err_no: 0, err_msg: "success", data: "" });
   }
   if (e === "disconnect") {
+    const sid = req.headers["x-tt-sessionid"]; if (sid) { gatewaySessions.delete(String(sid)); }
     return res.status(200).json({ err_no: 0, err_msg: "success", data: "" });
   }
   return res.status(400).json({ err_no: 40001, err_msg: "invalid event", data: null });
@@ -247,6 +251,7 @@ app.post(WS_BACKEND_PATH, async (req, res) => {
   }
   const payload = req.body || {};
   const sessionId = req.headers["x-tt-sessionid"];
+  if (sessionId) { const s = gatewaySessions.get(String(sessionId)); if (s) s.lastSeen = Date.now(); }
   const isPing = (p) => {
     if (typeof p === "string") return p.trim().toLowerCase() === "ping";
     if (p && typeof p.type === "string") return p.type.trim().toLowerCase() === "ping";
@@ -315,6 +320,27 @@ app.post("/api/ws/group/push", async (req, res) => {
     return res.status(500).json({ err_no: -1, err_msg: "internal error", data: null });
   }
 });
+
+setInterval(async () => {
+  try {
+    const now = Date.now();
+    const ids = Array.from(gatewaySessions.keys());
+    if (ids.length === 0) return;
+    const batchSize = 5;
+    for (let i = 0; i < ids.length; i += batchSize) {
+      const slice = ids.slice(i, i + batchSize);
+      const url = `${WS_GATEWAY_BASE}/ws/push_data`;
+      const r = await fetch(url, {
+        method: "POST",
+        headers: { "content-type": "application/json", "X-TT-WS-SESSIONIDS": JSON.stringify(slice) },
+        body: JSON.stringify({ type: "ping", ts: now })
+      });
+      const b = await r.json().catch(() => ({}));
+      if (r.status === 200) console.log("gateway_ping", { sessionIds: slice, ts: now });
+      else console.log("http_error", { url, status: r.status, body: b, ts: now });
+    }
+  } catch (_) {}
+}, GATEWAY_PING_INTERVAL_MS);
 
 app.post("/live_data_callback", async (req, res) => {
   try {
