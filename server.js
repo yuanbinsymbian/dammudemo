@@ -32,6 +32,7 @@ wss.on("connection", (socket) => {
         const ridStr = tk.slice(6);
         socket.roomId = ridStr;
         if (data.openId) socket.openId = String(data.openId);
+        console.log("ws_join", { roomId: ridStr, openId: socket.openId || null, via: "debug_token", ts: Date.now() });
         socket.send(JSON.stringify({ type: "joined", roomId: socket.roomId, roomIdStr: ridStr }));
         return;
       }
@@ -42,6 +43,7 @@ wss.on("connection", (socket) => {
           const ridStr = info.room_id_str || String(info.room_id);
           socket.roomId = ridStr;
           if (data.openId) socket.openId = String(data.openId);
+          console.log("ws_join", { roomId: ridStr, openId: socket.openId || null, via: "token_liveinfo", ts: Date.now() });
           socket.send(JSON.stringify({ type: "joined", roomId: socket.roomId, roomIdStr: ridStr }));
         } else {
           socket.send(JSON.stringify({ type: "join_failed", body: r }));
@@ -52,10 +54,12 @@ wss.on("connection", (socket) => {
     if (data && data.type === "join" && data.roomId) {
       socket.roomId = String(data.roomId);
       if (data.openId) socket.openId = String(data.openId);
+      console.log("ws_join", { roomId: socket.roomId, openId: socket.openId || null, via: "roomId", ts: Date.now() });
       socket.send(JSON.stringify({ type: "joined", roomId: socket.roomId, roomIdStr: String(socket.roomId) }));
       return;
     }
     if (data && data.type === "leave") {
+      console.log("ws_leave", { roomId: socket.roomId || null, openId: socket.openId || null, ts: Date.now() });
       delete socket.roomId;
       socket.send(JSON.stringify({ type: "left" }));
       return;
@@ -221,6 +225,7 @@ app.post("/live_data_callback", async (req, res) => {
         (body && body.data && body.data.info && body.data.info.room_id) ||
         ""
     );
+    console.log("live_data_callback", { roomId: roomId || null, ts: Date.now() });
     const payload = { type: "live_data", data: body };
     if (roomId) {
       wss.clients.forEach((client) => {
