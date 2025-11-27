@@ -27,7 +27,7 @@ wss.on("connection", (socket) => {
       data = JSON.parse(text);
     } catch (_) {}
     if (data && data.type) {
-      console.log("ws_uplink", { type: String(data.type), ts: Date.now() });
+      console.log("ws_uplink", { type: String(data.type), raw: text, ts: Date.now() });
     } else {
       console.log("ws_uplink", { type: "unknown", raw: text, ts: Date.now() });
     }
