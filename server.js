@@ -90,6 +90,13 @@ app.post("/api/live/info", async (req, res) => {
         body: JSON.stringify({ token })
       });
       const b = await r.json().catch(() => ({}));
+      try {
+        const info = b && b.data && b.data.info;
+        if (info && info.room_id !== undefined && info.room_id !== null) {
+          const rid = info.room_id;
+          b.data.info.room_id_str = typeof rid === "string" ? rid : String(rid);
+        }
+      } catch (_) {}
       return { ok: r.ok, body: b };
     };
     let first = await callOnce(headerXToken);
