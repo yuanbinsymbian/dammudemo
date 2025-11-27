@@ -168,16 +168,27 @@ app.post("/api/live/info", async (req, res) => {
         headers: { "content-type": "application/json", "x-token": xt },
         body: JSON.stringify({ token })
       });
-      const b = await r.json().catch(() => ({}));
-      if (r.status === 200) console.log("http_200_ok", { url, ts: Date.now() });
-      else console.log("http_error", { url, status: r.status, body: b, ts: Date.now() });
+      const txt = await r.text();
+      let b = {};
+      try { b = JSON.parse(txt); } catch (_) {}
+      let ridStr = null; const m = txt && txt.match(/"room_id"\s*:\s*"?(\d+)"?/);
       try {
         const info = b && b.data && b.data.info;
-        if (info && info.room_id !== undefined && info.room_id !== null) {
-          const rid = info.room_id;
-          b.data.info.room_id_str = typeof rid === "string" ? rid : String(rid);
+        if (info) {
+          if (m) ridStr = m[1];
+          if (ridStr) {
+            b.data.info.room_id_str = ridStr;
+            b.data.info.room_id = ridStr;
+          } else if (info.room_id !== undefined && info.room_id !== null) {
+            const rid = info.room_id;
+            const asStr = typeof rid === "string" ? rid : String(rid);
+            b.data.info.room_id_str = asStr;
+            b.data.info.room_id = asStr;
+          }
         }
       } catch (_) {}
+      if (r.status === 200) console.log("http_200_ok", { url, status: r.status, body: b, ts: Date.now() });
+      else console.log("http_error", { url, status: r.status, body: b, ts: Date.now() });
       return { ok: r.ok, body: b };
     };
     let first = await callOnce(headerXToken);
@@ -388,16 +399,27 @@ async function fetchLiveInfoByToken(token, overrideXToken) {
       headers: { "content-type": "application/json", "x-token": xt },
       body: JSON.stringify({ token })
     });
-    const b = await r.json().catch(() => ({}));
-    if (r.status === 200) console.log("http_200_ok", { url, ts: Date.now() });
-    else console.log("http_error", { url, status: r.status, body: b, ts: Date.now() });
+    const txt = await r.text();
+    let b = {};
+    try { b = JSON.parse(txt); } catch (_) {}
+    let ridStr = null; const m = txt && txt.match(/"room_id"\s*:\s*"?(\d+)"?/);
     try {
       const info = b && b.data && b.data.info;
-      if (info && info.room_id !== undefined && info.room_id !== null) {
-        const rid = info.room_id;
-        b.data.info.room_id_str = typeof rid === "string" ? rid : String(rid);
+      if (info) {
+        if (m) ridStr = m[1];
+        if (ridStr) {
+          b.data.info.room_id_str = ridStr;
+          b.data.info.room_id = ridStr;
+        } else if (info.room_id !== undefined && info.room_id !== null) {
+          const rid = info.room_id;
+          const asStr = typeof rid === "string" ? rid : String(rid);
+          b.data.info.room_id_str = asStr;
+          b.data.info.room_id = asStr;
+        }
       }
     } catch (_) {}
+    if (r.status === 200) console.log("http_200_ok", { url, status: r.status, body: b, ts: Date.now() });
+    else console.log("http_error", { url, status: r.status, body: b, ts: Date.now() });
     return { ok: r.ok, body: b };
   };
   let headerXToken = overrideXToken;
