@@ -9,6 +9,8 @@ app.use(express.urlencoded({ extended: false }));
 const WS_BACKEND_PATH = process.env.WS_BACKEND_PATH || "/ws/backend";
 const WS_ON_CONNECT_PATH = process.env.WS_ON_CONNECT_PATH || "/ws/on_connect";
 const WS_GATEWAY_BASE = process.env.WS_GATEWAY_BASE || "https://ws-push.dyc.ivolces.com";
+const WS_HEARTBEAT_INTERVAL_MS = parseInt(process.env.WS_HEARTBEAT_INTERVAL_MS || "30000", 10);
+const WS_HEARTBEAT_IDLE_TIMEOUT_MS = parseInt(process.env.WS_HEARTBEAT_IDLE_TIMEOUT_MS || "90000", 10);
 
 app.get("/v1/ping", (req, res) => {
   res.send("ok");
@@ -19,9 +21,24 @@ const wss = new WebSocket.Server({ server, path: "/ws" });
 
 wss.on("connection", (socket) => {
   socket.send(JSON.stringify({ type: "welcome", ts: Date.now() }));
+  socket.isAlive = true;
+  let lastSeen = Date.now();
+  socket.on("pong", () => { socket.isAlive = true; lastSeen = Date.now(); console.log("ws_pong", { roomId: socket.roomId || null, openId: socket.openId || null, ts: Date.now() }); });
+  const hb = setInterval(() => {
+    if (Date.now() - lastSeen > WS_HEARTBEAT_IDLE_TIMEOUT_MS) {
+      console.log("ws_timeout", { roomId: socket.roomId || null, openId: socket.openId || null, ts: Date.now() });
+      try { socket.terminate(); } catch (_) {}
+      clearInterval(hb);
+      return;
+    }
+    try { socket.ping(); console.log("ws_ping", { roomId: socket.roomId || null, openId: socket.openId || null, ts: Date.now() }); } catch (_) {}
+  }, WS_HEARTBEAT_INTERVAL_MS);
+  socket.on("close", () => { try { clearInterval(hb); } catch (_) {} });
+  socket.on("error", () => { try { clearInterval(hb); } catch (_) {} });
 
   socket.on("message", (msg) => {
     const text = msg.toString();
+    socket.isAlive = true; lastSeen = Date.now();
     let data;
     try {
       data = JSON.parse(text);
