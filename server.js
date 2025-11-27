@@ -419,13 +419,15 @@ async function fetchLiveInfoByToken(token, overrideXToken) {
 async function startLiveDataTask(appid, roomid, msgType) {
   const doCall = async (accessToken) => {
     const url = "https://webcast.bytedance.com/api/live_data/task/start";
+    const payload = { appid: String(appid), msg_type: String(msgType), roomid: String(roomid) };
+    console.log("http_request", { url, payload, ts: Date.now() });
     const r = await fetch(url, {
       method: "POST",
       headers: { "content-type": "application/json", "access-token": accessToken },
-      body: JSON.stringify({ appid: String(appid), msg_type: String(msgType), roomid: String(roomid) })
+      body: JSON.stringify(payload)
     });
     const b = await r.json().catch(() => ({}));
-    if (r.status === 200) console.log("http_200_ok", { url, ts: Date.now() });
+    if (r.status === 200) console.log("http_200_ok", { url, status: r.status, body: b, ts: Date.now() });
     else console.log("http_error", { url, status: r.status, body: b, ts: Date.now() });
     return b;
   };
