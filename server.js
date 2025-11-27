@@ -9,8 +9,8 @@ app.use(express.urlencoded({ extended: false }));
 const WS_BACKEND_PATH = process.env.WS_BACKEND_PATH || "/ws/backend";
 const WS_ON_CONNECT_PATH = process.env.WS_ON_CONNECT_PATH || "/ws/on_connect";
 const WS_GATEWAY_BASE = process.env.WS_GATEWAY_BASE || "https://ws-push.dyc.ivolces.com";
-const WS_HEARTBEAT_INTERVAL_MS = parseInt(process.env.WS_HEARTBEAT_INTERVAL_MS || "30000", 10);
-const WS_HEARTBEAT_IDLE_TIMEOUT_MS = parseInt(process.env.WS_HEARTBEAT_IDLE_TIMEOUT_MS || "90000", 10);
+const WS_HEARTBEAT_INTERVAL_MS = parseInt(process.env.WS_HEARTBEAT_INTERVAL_MS || "20000", 10);
+const WS_HEARTBEAT_IDLE_TIMEOUT_MS = parseInt(process.env.WS_HEARTBEAT_IDLE_TIMEOUT_MS || "120000", 10);
 
 app.get("/v1/ping", (req, res) => {
   res.send("ok");
@@ -33,8 +33,14 @@ wss.on("connection", (socket) => {
     }
     try { socket.ping(); console.log("ws_ping", { roomId: socket.roomId || null, openId: socket.openId || null, ts: Date.now() }); } catch (_) {}
   }, WS_HEARTBEAT_INTERVAL_MS);
-  socket.on("close", () => { try { clearInterval(hb); } catch (_) {} });
-  socket.on("error", () => { try { clearInterval(hb); } catch (_) {} });
+  socket.on("close", (code, reason) => {
+    try { clearInterval(hb); } catch (_) {}
+    console.log("ws_close", { roomId: socket.roomId || null, openId: socket.openId || null, code, reason: reason ? reason.toString() : null, ts: Date.now() });
+  });
+  socket.on("error", (err) => {
+    try { clearInterval(hb); } catch (_) {}
+    console.log("ws_error", { roomId: socket.roomId || null, openId: socket.openId || null, err: String(err && err.message || err), ts: Date.now() });
+  });
 
   socket.on("message", (msg) => {
     const text = msg.toString();
