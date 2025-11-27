@@ -73,6 +73,28 @@ wss.on("connection", (socket) => {
       });
       return;
     }
+    if (data && data.type === "startgame") {
+      (async () => {
+        const roomId = String(data.roomId || socket.roomId || "");
+        const appid = process.env.DOUYIN_APP_ID;
+        if (!roomId || !appid) {
+          socket.send(JSON.stringify({ type: "startgame_failed", reason: !roomId ? "missing roomId" : "missing appid" }));
+          return;
+        }
+        let msgTypes = data.msgTypes;
+        if (!msgTypes) msgTypes = ["live_comment", "live_gift", "live_like"];
+        if (typeof msgTypes === "string") msgTypes = [msgTypes];
+        if (!Array.isArray(msgTypes)) msgTypes = ["live_comment"];
+        const results = [];
+        for (const mt of msgTypes) {
+          const res = await startLiveDataTask(appid, roomId, String(mt));
+          results.push({ msgType: String(mt), res });
+        }
+        console.log("ws_startgame", { roomId, msgTypes, ts: Date.now() });
+        socket.send(JSON.stringify({ type: "startgame_ok", roomId, results }));
+      })();
+      return;
+    }
     wss.clients.forEach((client) => {
       if (client.readyState === WebSocket.OPEN) client.send(text);
     });
@@ -325,6 +347,34 @@ async function fetchLiveInfoByToken(token, overrideXToken) {
     }
   }
   return body;
+}
+
+async function startLiveDataTask(appid, roomid, msgType) {
+  const doCall = async (accessToken) => {
+    const r = await fetch("https://webcast.bytedance.com/api/live_data/task/start", {
+      method: "POST",
+      headers: { "content-type": "application/json", "access-token": accessToken },
+      body: JSON.stringify({ appid: String(appid), msg_type: String(msgType), roomid: String(roomid) })
+    });
+    const b = await r.json().catch(() => ({}));
+    return b;
+  };
+  const at = await fetchAccessToken(false);
+  if (!at || !at.access_token) {
+    const at2 = await fetchAccessToken(true);
+    if (!at2 || !at2.access_token) return at2 || { err_no: 40020, err_msg: "access_token unavailable", data: null };
+    const b2 = await doCall(at2.access_token);
+    return b2;
+  }
+  const b1 = await doCall(at.access_token);
+  if (b1 && typeof b1.err_no === "number" && b1.err_no !== 0) {
+    const at2 = await fetchAccessToken(true);
+    if (at2 && at2.access_token) {
+      const b2 = await doCall(at2.access_token);
+      return b2;
+    }
+  }
+  return b1;
 }
 
 // No public route for access_token; use fetchAccessToken() internally only.
