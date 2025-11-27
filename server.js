@@ -124,6 +124,7 @@ app.post("/api/live/info", async (req, res) => {
     const token = req.body && req.body.token;
     const xToken = req.body && req.body.xToken;
     if (!token || typeof token !== "string") {
+      console.log("live_info_error", { reason: "invalid token", ts: Date.now() });
       return res.status(400).json({ err_no: 40001, err_tips: "invalid token", data: null });
     }
     let headerXToken = xToken;
@@ -132,6 +133,7 @@ app.post("/api/live/info", async (req, res) => {
       if (at && at.access_token) {
         headerXToken = at.access_token;
       } else {
+        console.log("live_info_error", { reason: "access_token unavailable", body: at, ts: Date.now() });
         return res.status(200).json(at || { err_no: 40020, err_tips: "access_token unavailable", data: null });
       }
     }
@@ -160,11 +162,28 @@ app.post("/api/live/info", async (req, res) => {
       const at2 = await fetchAccessToken(true);
       if (at2 && at2.access_token) {
         const second = await callOnce(at2.access_token);
-        return res.status(200).json(second.body);
+        const body = second.body || {};
+        if (body && body.errcode === 0) {
+          const info = body && body.data && body.data.info;
+          console.log("live_info_ok", { roomId: info && (info.room_id_str || info.room_id) || null, ts: Date.now() });
+        } else {
+          console.log("live_info_error", { errcode: body.errcode, errmsg: body.errmsg, status_code: body.status_code, body, ts: Date.now() });
+        }
+        return res.status(200).json(body);
       }
     }
-    return res.status(200).json(first.body);
+    {
+      const body = first.body || {};
+      if (body && body.errcode === 0) {
+        const info = body && body.data && body.data.info;
+        console.log("live_info_ok", { roomId: info && (info.room_id_str || info.room_id) || null, ts: Date.now() });
+      } else {
+        console.log("live_info_error", { errcode: body.errcode, errmsg: body.errmsg, status_code: body.status_code, body, ts: Date.now() });
+      }
+      return res.status(200).json(body);
+    }
   } catch (e) {
+    console.log("live_info_error", { reason: "exception", err: String(e && e.message || e), ts: Date.now() });
     return res.status(500).json({ err_no: -1, err_tips: "internal error", data: null });
   }
 });
