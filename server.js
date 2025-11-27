@@ -136,12 +136,15 @@ app.post("/api/live/info", async (req, res) => {
       }
     }
     const callOnce = async (xt) => {
-      const r = await fetch("https://webcast.bytedance.com/api/webcastmate/info", {
+      const url = "https://webcast.bytedance.com/api/webcastmate/info";
+      const r = await fetch(url, {
         method: "POST",
         headers: { "content-type": "application/json", "x-token": xt },
         body: JSON.stringify({ token })
       });
       const b = await r.json().catch(() => ({}));
+      if (r.status === 200) console.log("http_200_ok", { url, ts: Date.now() });
+      else console.log("http_error", { url, status: r.status, body: b, ts: Date.now() });
       try {
         const info = b && b.data && b.data.info;
         if (info && info.room_id !== undefined && info.room_id !== null) {
@@ -189,15 +192,21 @@ app.post(WS_BACKEND_PATH, async (req, res) => {
     if (p && typeof p.type === "string") return p.type.trim().toLowerCase() === "ping";
     return false;
   };
-  if (sessionId && isPing(payload)) {
-    await fetch(`${WS_GATEWAY_BASE}/ws/push_data`, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "X-TT-WS-SESSIONIDS": JSON.stringify([String(sessionId)])
-      },
-      body: JSON.stringify({ type: "pong", ts: Date.now() })
-    }).catch(() => {});
+    if (sessionId && isPing(payload)) {
+    try {
+      const url = `${WS_GATEWAY_BASE}/ws/push_data`;
+      const r = await fetch(url, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "X-TT-WS-SESSIONIDS": JSON.stringify([String(sessionId)])
+        },
+        body: JSON.stringify({ type: "pong", ts: Date.now() })
+      });
+      const out = await r.json().catch(() => ({}));
+      if (r.status === 200) console.log("http_200_ok", { url, ts: Date.now() });
+      else console.log("http_error", { url, status: r.status, body: out, ts: Date.now() });
+    } catch (_) {}
   }
   return res.status(200).json({ err_no: 0, err_msg: "success", data: payload });
 });
@@ -217,8 +226,11 @@ app.post("/api/ws/push", async (req, res) => {
     const headers = { "content-type": "application/json" };
     if (Array.isArray(sessionIds) && sessionIds.length > 0) headers["X-TT-WS-SESSIONIDS"] = JSON.stringify(sessionIds.map(String));
     if (Array.isArray(openIds) && openIds.length > 0) headers["X-TT-WS-OPENIDS"] = JSON.stringify(openIds.map(String));
-    const r = await fetch(`${base}/ws/push_data`, { method: "POST", headers, body: JSON.stringify(payload ?? {}) });
+    const url = `${base}/ws/push_data`;
+    const r = await fetch(url, { method: "POST", headers, body: JSON.stringify(payload ?? {}) });
     const b = await r.json().catch(() => ({}));
+    if (r.status === 200) console.log("http_200_ok", { url, ts: Date.now() });
+    else console.log("http_error", { url, status: r.status, body: b, ts: Date.now() });
     return res.status(200).json(b);
   } catch (e) {
     return res.status(500).json({ err_no: -1, err_msg: "internal error", data: null });
@@ -233,8 +245,11 @@ app.post("/api/ws/group/push", async (req, res) => {
       return res.status(400).json({ err_no: 40001, err_msg: "missing group", data: null });
     }
     const headers = { "content-type": "application/json", "X-TT-WS-GROUPNAME": String(groupName), "X-TT-WS-GROUPVALUE": String(groupValue) };
-    const r = await fetch(`${base}/ws/group/push_data`, { method: "POST", headers, body: JSON.stringify(payload ?? {}) });
+    const url = `${base}/ws/group/push_data`;
+    const r = await fetch(url, { method: "POST", headers, body: JSON.stringify(payload ?? {}) });
     const b = await r.json().catch(() => ({}));
+    if (r.status === 200) console.log("http_200_ok", { url, ts: Date.now() });
+    else console.log("http_error", { url, status: r.status, body: b, ts: Date.now() });
     return res.status(200).json(b);
   } catch (e) {
     return res.status(500).json({ err_no: -1, err_msg: "internal error", data: null });
@@ -276,12 +291,15 @@ app.post("/api/ws/get_conn_id", async (req, res) => {
     if (!service_id || !env_id) {
       return res.status(400).json({ err_no: 40001, err_msg: "missing service_id or env_id", data: null });
     }
-    const r = await fetch(`${base}/ws/get_conn_id`, {
+    const url = `${base}/ws/get_conn_id`;
+    const r = await fetch(url, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ service_id: String(service_id), env_id: String(env_id), token })
     });
     const b = await r.json().catch(() => ({}));
+    if (r.status === 200) console.log("http_200_ok", { url, ts: Date.now() });
+    else console.log("http_error", { url, status: r.status, body: b, ts: Date.now() });
     return res.status(200).json(b);
   } catch (e) {
     return res.status(500).json({ err_no: -1, err_msg: "internal error", data: null });
@@ -319,12 +337,15 @@ async function fetchAccessToken(force = false) {
 
 async function fetchLiveInfoByToken(token, overrideXToken) {
   const doCall = async (xt) => {
-    const r = await fetch("https://webcast.bytedance.com/api/webcastmate/info", {
+    const url = "https://webcast.bytedance.com/api/webcastmate/info";
+    const r = await fetch(url, {
       method: "POST",
       headers: { "content-type": "application/json", "x-token": xt },
       body: JSON.stringify({ token })
     });
     const b = await r.json().catch(() => ({}));
+    if (r.status === 200) console.log("http_200_ok", { url, ts: Date.now() });
+    else console.log("http_error", { url, status: r.status, body: b, ts: Date.now() });
     try {
       const info = b && b.data && b.data.info;
       if (info && info.room_id !== undefined && info.room_id !== null) {
@@ -354,12 +375,15 @@ async function fetchLiveInfoByToken(token, overrideXToken) {
 
 async function startLiveDataTask(appid, roomid, msgType) {
   const doCall = async (accessToken) => {
-    const r = await fetch("https://webcast.bytedance.com/api/live_data/task/start", {
+    const url = "https://webcast.bytedance.com/api/live_data/task/start";
+    const r = await fetch(url, {
       method: "POST",
       headers: { "content-type": "application/json", "access-token": accessToken },
       body: JSON.stringify({ appid: String(appid), msg_type: String(msgType), roomid: String(roomid) })
     });
     const b = await r.json().catch(() => ({}));
+    if (r.status === 200) console.log("http_200_ok", { url, ts: Date.now() });
+    else console.log("http_error", { url, status: r.status, body: b, ts: Date.now() });
     return b;
   };
   const at = await fetchAccessToken(false);
