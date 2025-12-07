@@ -9,6 +9,8 @@
     "node": ">=18"
   },
   "dependencies": {
+    "@open-dy/open_api_credential": "^1.0.0",
+    "@open-dy/open_api_sdk": "^1.1.3",
     "express": "^4.19.2",
     "ws": "^8.18.0"
   }

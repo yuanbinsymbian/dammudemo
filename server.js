@@ -2,18 +2,19 @@ const express = require("express");
 const http = require("http");
 const WebSocket = require("ws");
 const CredentialClient = require("@open-dy/open_api_credential");
+let OpenApiSdk;
+try { OpenApiSdk = require("@open-dy/open_api_sdk"); } catch (_) { OpenApiSdk = null; }
+const SdkClient = OpenApiSdk && (OpenApiSdk.default || OpenApiSdk) || null;
+const TaskStartRequest = OpenApiSdk && OpenApiSdk.TaskStartRequest || null;
+const WebcastmateInfoRequest = OpenApiSdk && OpenApiSdk.WebcastmateInfoRequest || null;
 
 const app = express();
 const PORT = 8000;
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
-const WS_BACKEND_PATH = process.env.WS_BACKEND_PATH || "/ws/backend";
-const WS_ON_CONNECT_PATH = process.env.WS_ON_CONNECT_PATH || "/ws/on_connect";
-const WS_GATEWAY_BASE = process.env.WS_GATEWAY_BASE || "https://ws-push.dyc.ivolces.com";
 const WS_HEARTBEAT_INTERVAL_MS = parseInt(process.env.WS_HEARTBEAT_INTERVAL_MS || "20000", 10);
 const WS_HEARTBEAT_IDLE_TIMEOUT_MS = parseInt(process.env.WS_HEARTBEAT_IDLE_TIMEOUT_MS || "120000", 10);
-const GATEWAY_PING_INTERVAL_MS = parseInt(process.env.GATEWAY_PING_INTERVAL_MS || "30000", 10);
-const gatewaySessions = new Map();
+ 
 
 app.get("/v1/ping", (req, res) => {
   res.send("ok");
@@ -174,188 +175,20 @@ app.post("/api/live/info", async (req, res) => {
       console.log("live_info_error", { reason: "invalid token", ts: Date.now() });
       return res.status(400).json({ err_no: 40001, err_tips: "invalid token", data: null });
     }
-    let headerXToken = xToken;
-    if (!headerXToken) {
-      const at = await fetchAccessToken(false);
-      if (at && at.access_token) {
-        headerXToken = at.access_token;
-      } else {
-        console.log("live_info_error", { reason: "access_token unavailable", body: at, ts: Date.now() });
-        return res.status(200).json(at || { err_no: 40020, err_tips: "access_token unavailable", data: null });
-      }
+    const body = await fetchLiveInfoByToken(token, xToken);
+    if (body && body.errcode === 0) {
+      const info = body && body.data && body.data.info;
+      console.log("live_info_ok", { roomId: info && (info.room_id_str || info.room_id) || null, ts: Date.now() });
+    } else {
+      console.log("live_info_error", { errcode: body && body.errcode, errmsg: body && body.errmsg, status_code: body && body.status_code, body, ts: Date.now() });
     }
-    const callOnce = async (xt) => {
-      const url = "https://webcast.bytedance.com/api/webcastmate/info";
-      const r = await fetch(url, {
-        method: "POST",
-        headers: { "content-type": "application/json", "x-token": xt },
-        body: JSON.stringify({ token })
-      });
-      const txt = await r.text();
-      let b = {};
-      try { b = JSON.parse(txt); } catch (_) {}
-      let ridStr = null; const m = txt && txt.match(/"room_id"\s*:\s*"?(\d+)"?/);
-      try {
-        const info = b && b.data && b.data.info;
-        if (info) {
-          if (m) ridStr = m[1];
-          if (ridStr) {
-            b.data.info.room_id_str = ridStr;
-            b.data.info.room_id = ridStr;
-          } else if (info.room_id !== undefined && info.room_id !== null) {
-            const rid = info.room_id;
-            const asStr = typeof rid === "string" ? rid : String(rid);
-            b.data.info.room_id_str = asStr;
-            b.data.info.room_id = asStr;
-          }
-        }
-      } catch (_) {}
-      if (r.status === 200) console.log("http_200_ok", { url, status: r.status, body: b, ts: Date.now() });
-      else console.log("http_error", { url, status: r.status, body: b, ts: Date.now() });
-      return { ok: r.ok, body: b };
-    };
-    let first = await callOnce(headerXToken);
-    const expired = first && first.body && (first.body.errcode === 40004 || /access token is expired/i.test(String(first.body.errmsg)));
-    if (expired && !xToken) {
-      const at2 = await fetchAccessToken(true);
-      if (at2 && at2.access_token) {
-        const second = await callOnce(at2.access_token);
-        const body = second.body || {};
-        if (body && body.errcode === 0) {
-          const info = body && body.data && body.data.info;
-          console.log("live_info_ok", { roomId: info && (info.room_id_str || info.room_id) || null, ts: Date.now() });
-        } else {
-          console.log("live_info_error", { errcode: body.errcode, errmsg: body.errmsg, status_code: body.status_code, body, ts: Date.now() });
-        }
-        return res.status(200).json(body);
-      }
-    }
-    {
-      const body = first.body || {};
-      if (body && body.errcode === 0) {
-        const info = body && body.data && body.data.info;
-        console.log("live_info_ok", { roomId: info && (info.room_id_str || info.room_id) || null, ts: Date.now() });
-      } else {
-        console.log("live_info_error", { errcode: body.errcode, errmsg: body.errmsg, status_code: body.status_code, body, ts: Date.now() });
-      }
-      return res.status(200).json(body);
-    }
+    return res.status(200).json(body);
   } catch (e) {
     console.log("live_info_error", { reason: "exception", err: String(e && e.message || e), ts: Date.now() });
     return res.status(500).json({ err_no: -1, err_tips: "internal error", data: null });
   }
 });
 
-app.get(WS_BACKEND_PATH, async (req, res) => {
-  const e = req.headers["x-tt-event-type"];
-  if (e === "connect") {
-    const sid = req.headers["x-tt-sessionid"]; if (sid) { gatewaySessions.set(String(sid), { lastSeen: Date.now() }); }
-    return res.status(200).json({ err_no: 0, err_msg: "success", data: "" });
-  }
-  if (e === "disconnect") {
-    const sid = req.headers["x-tt-sessionid"]; if (sid) { gatewaySessions.delete(String(sid)); }
-    return res.status(200).json({ err_no: 0, err_msg: "success", data: "" });
-  }
-  return res.status(400).json({ err_no: 40001, err_msg: "invalid event", data: null });
-});
-
-app.post(WS_BACKEND_PATH, async (req, res) => {
-  const e = req.headers["x-tt-event-type"];
-  if (e !== "uplink") {
-    return res.status(400).json({ err_no: 40001, err_msg: "invalid event", data: null });
-  }
-  const payload = req.body || {};
-  const sessionId = req.headers["x-tt-sessionid"];
-  if (sessionId) { const s = gatewaySessions.get(String(sessionId)); if (s) s.lastSeen = Date.now(); }
-  const isPing = (p) => {
-    if (typeof p === "string") return p.trim().toLowerCase() === "ping";
-    if (p && typeof p.type === "string") return p.type.trim().toLowerCase() === "ping";
-    return false;
-  };
-    if (sessionId && isPing(payload)) {
-    try {
-      const url = `${WS_GATEWAY_BASE}/ws/push_data`;
-      const r = await fetch(url, {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          "X-TT-WS-SESSIONIDS": JSON.stringify([String(sessionId)])
-        },
-        body: JSON.stringify({ type: "pong", ts: Date.now() })
-      });
-      const out = await r.json().catch(() => ({}));
-      if (r.status === 200) console.log("http_200_ok", { url, ts: Date.now() });
-      else console.log("http_error", { url, status: r.status, body: out, ts: Date.now() });
-    } catch (_) {}
-  }
-  return res.status(200).json({ err_no: 0, err_msg: "success", data: payload });
-});
-
-app.post(WS_ON_CONNECT_PATH, async (req, res) => {
-  const connId = req.headers["x-tt-ws-conn-id"];
-  return res.status(200).json({ err_no: 0, err_msg: "success", data: String(connId || "") });
-});
-
-app.post("/api/ws/push", async (req, res) => {
-  try {
-    const base = WS_GATEWAY_BASE;
-    const { sessionIds, openIds, payload } = req.body || {};
-    if ((!Array.isArray(sessionIds) || sessionIds.length === 0) && (!Array.isArray(openIds) || openIds.length === 0)) {
-      return res.status(400).json({ err_no: 40001, err_msg: "missing targets", data: null });
-    }
-    const headers = { "content-type": "application/json" };
-    if (Array.isArray(sessionIds) && sessionIds.length > 0) headers["X-TT-WS-SESSIONIDS"] = JSON.stringify(sessionIds.map(String));
-    if (Array.isArray(openIds) && openIds.length > 0) headers["X-TT-WS-OPENIDS"] = JSON.stringify(openIds.map(String));
-    const url = `${base}/ws/push_data`;
-    const r = await fetch(url, { method: "POST", headers, body: JSON.stringify(payload ?? {}) });
-    const b = await r.json().catch(() => ({}));
-    if (r.status === 200) console.log("http_200_ok", { url, ts: Date.now() });
-    else console.log("http_error", { url, status: r.status, body: b, ts: Date.now() });
-    return res.status(200).json(b);
-  } catch (e) {
-    return res.status(500).json({ err_no: -1, err_msg: "internal error", data: null });
-  }
-});
-
-app.post("/api/ws/group/push", async (req, res) => {
-  try {
-    const base = WS_GATEWAY_BASE;
-    const { groupName, groupValue, payload } = req.body || {};
-    if (!groupName || !groupValue) {
-      return res.status(400).json({ err_no: 40001, err_msg: "missing group", data: null });
-    }
-    const headers = { "content-type": "application/json", "X-TT-WS-GROUPNAME": String(groupName), "X-TT-WS-GROUPVALUE": String(groupValue) };
-    const url = `${base}/ws/group/push_data`;
-    const r = await fetch(url, { method: "POST", headers, body: JSON.stringify(payload ?? {}) });
-    const b = await r.json().catch(() => ({}));
-    if (r.status === 200) console.log("http_200_ok", { url, ts: Date.now() });
-    else console.log("http_error", { url, status: r.status, body: b, ts: Date.now() });
-    return res.status(200).json(b);
-  } catch (e) {
-    return res.status(500).json({ err_no: -1, err_msg: "internal error", data: null });
-  }
-});
-
-setInterval(async () => {
-  try {
-    const now = Date.now();
-    const ids = Array.from(gatewaySessions.keys());
-    if (ids.length === 0) return;
-    const batchSize = 5;
-    for (let i = 0; i < ids.length; i += batchSize) {
-      const slice = ids.slice(i, i + batchSize);
-      const url = `${WS_GATEWAY_BASE}/ws/push_data`;
-      const r = await fetch(url, {
-        method: "POST",
-        headers: { "content-type": "application/json", "X-TT-WS-SESSIONIDS": JSON.stringify(slice) },
-        body: JSON.stringify({ type: "ping", ts: now })
-      });
-      const b = await r.json().catch(() => ({}));
-      if (r.status === 200) console.log("gateway_ping", { sessionIds: slice, ts: now });
-      else console.log("http_error", { url, status: r.status, body: b, ts: now });
-    }
-  } catch (_) {}
-}, GATEWAY_PING_INTERVAL_MS);
 
 app.post("/live_data_callback", async (req, res) => {
   try {
@@ -387,32 +220,22 @@ app.post("/live_data_callback", async (req, res) => {
   }
 });
 
-app.post("/api/ws/get_conn_id", async (req, res) => {
-  try {
-    const base = WS_GATEWAY_BASE;
-    const { service_id, env_id, token } = req.body || {};
-    if (!service_id || !env_id) {
-      return res.status(400).json({ err_no: 40001, err_msg: "missing service_id or env_id", data: null });
-    }
-    const url = `${base}/ws/get_conn_id`;
-    const r = await fetch(url, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ service_id: String(service_id), env_id: String(env_id), token })
-    });
-    const b = await r.json().catch(() => ({}));
-    if (r.status === 200) console.log("http_200_ok", { url, ts: Date.now() });
-    else console.log("http_error", { url, status: r.status, body: b, ts: Date.now() });
-    return res.status(200).json(b);
-  } catch (e) {
-    return res.status(500).json({ err_no: -1, err_msg: "internal error", data: null });
-  }
-});
 
 // Access token cache and fetcher
 let ACCESS_TOKEN = null;
 let ACCESS_TOKEN_EXPIRES_AT = 0;
 let credentialClient = null;
+let openApiClient = null;
+
+function getOpenApiClient() {
+  if (!SdkClient) return null;
+  if (openApiClient) return openApiClient;
+  const appid = process.env.DOUYIN_APP_ID;
+  const secret = process.env.DOUYIN_APP_SECRET;
+  if (!appid || !secret) return null;
+  try { openApiClient = new SdkClient({ clientKey: appid, clientSecret: secret }); } catch (_) { openApiClient = null; }
+  return openApiClient;
+}
 
 async function fetchAccessToken(force = false) {
   const now = Date.now();
@@ -437,85 +260,97 @@ async function fetchAccessToken(force = false) {
 }
 
 async function fetchLiveInfoByToken(token, overrideXToken) {
-  const doCall = async (xt) => {
-    const url = "https://webcast.bytedance.com/api/webcastmate/info";
-    const r = await fetch(url, {
-      method: "POST",
-      headers: { "content-type": "application/json", "x-token": xt },
-      body: JSON.stringify({ token })
-    });
-    const txt = await r.text();
-    let b = {};
-    try { b = JSON.parse(txt); } catch (_) {}
-    let ridStr = null; const m = txt && txt.match(/"room_id"\s*:\s*"?(\d+)"?/);
+  const client = getOpenApiClient();
+  if (client && typeof client.webcastmateInfo === "function") {
     try {
-      const info = b && b.data && b.data.info;
-      if (info) {
-        if (m) ridStr = m[1];
-        if (ridStr) {
-          b.data.info.room_id_str = ridStr;
-          b.data.info.room_id = ridStr;
-        } else if (info.room_id !== undefined && info.room_id !== null) {
-          const rid = info.room_id;
-          const asStr = typeof rid === "string" ? rid : String(rid);
-          b.data.info.room_id_str = asStr;
-          b.data.info.room_id = asStr;
-        }
+      const at = await fetchAccessToken(false);
+      const xToken = (overrideXToken || (at && at.access_token)) ? (overrideXToken || at.access_token) : null;
+      const buildReq = (xt) => {
+        const base = { token: String(token), xToken: xt };
+        return WebcastmateInfoRequest ? new WebcastmateInfoRequest(base) : base;
+      };
+      if (!xToken) {
+        const at2 = await fetchAccessToken(true);
+        if (!at2 || !at2.access_token) return at2 || { err_no: 40020, err_tips: "access_token unavailable", data: null };
+        const req = buildReq(at2.access_token);
+        let sdkRes = await client.webcastmateInfo(req);
+        let body = sdkRes || {};
+        try {
+          const info = body && body.data && body.data.info;
+          const txt = JSON.stringify(body);
+          const m = txt && txt.match(/"room_id"\s*:\s*"?(\d+)"?/);
+          if (info) {
+            if (m) { info.room_id_str = m[1]; info.room_id = m[1]; }
+            else if (info.room_id !== undefined && info.room_id !== null) { const asStr = typeof info.room_id === "string" ? info.room_id : String(info.room_id); info.room_id_str = asStr; info.room_id = asStr; }
+          }
+        } catch (_) {}
+        console.log("sdk_call_ok", { api: "webcastmateInfo", ts: Date.now() });
+        return body;
       }
-    } catch (_) {}
-    if (r.status === 200) console.log("http_200_ok", { url, status: r.status, body: b, ts: Date.now() });
-    else console.log("http_error", { url, status: r.status, body: b, ts: Date.now() });
-    return { ok: r.ok, body: b };
-  };
-  let headerXToken = overrideXToken;
-  if (!headerXToken) {
-    const at = await fetchAccessToken(false);
-    if (at && at.access_token) headerXToken = at.access_token; else return at || { err_no: 40020, err_tips: "access_token unavailable", data: null };
-  }
-  const first = await doCall(headerXToken);
-  const body = first.body;
-  const expired = body && (body.errcode === 40004 || /access token is expired/i.test(String(body.errmsg)));
-  if (expired && !overrideXToken) {
-    const at2 = await fetchAccessToken(true);
-    if (at2 && at2.access_token) {
-      const second = await doCall(at2.access_token);
-      return second.body;
+      const req = buildReq(xToken);
+      let sdkRes = await client.webcastmateInfo(req);
+      let body = sdkRes || {};
+      try {
+        const info = body && body.data && body.data.info;
+        const txt = JSON.stringify(body);
+        const m = txt && txt.match(/"room_id"\s*:\s*"?(\d+)"?/);
+        if (info) {
+          if (m) { info.room_id_str = m[1]; info.room_id = m[1]; }
+          else if (info.room_id !== undefined && info.room_id !== null) { const asStr = typeof info.room_id === "string" ? info.room_id : String(info.room_id); info.room_id_str = asStr; info.room_id = asStr; }
+        }
+      } catch (_) {}
+      console.log("sdk_call_ok", { api: "webcastmateInfo", ts: Date.now() });
+      return body;
+    } catch (e) {
+      return { err_no: -1, err_tips: String(e && e.message || e), data: null };
     }
   }
-  return body;
+  return { err_no: 40023, err_tips: "sdk_unavailable", data: null };
 }
 
 async function startLiveDataTask(appid, roomid, msgType) {
-  const doCall = async (accessToken) => {
-    const url = "https://webcast.bytedance.com/api/live_data/task/start";
-    const payload = { appid: String(appid), msg_type: String(msgType), roomid: String(roomid) };
-    console.log("http_request", { url, payload, ts: Date.now() });
-    const r = await fetch(url, {
-      method: "POST",
-      headers: { "content-type": "application/json", "access-token": accessToken },
-      body: JSON.stringify(payload)
-    });
-    const b = await r.json().catch(() => ({}));
-    if (r.status === 200) console.log("http_200_ok", { url, status: r.status, body: b, ts: Date.now() });
-    else console.log("http_error", { url, status: r.status, body: b, ts: Date.now() });
-    return b;
-  };
-  const at = await fetchAccessToken(false);
-  if (!at || !at.access_token) {
-    const at2 = await fetchAccessToken(true);
-    if (!at2 || !at2.access_token) return at2 || { err_no: 40020, err_msg: "access_token unavailable", data: null };
-    const b2 = await doCall(at2.access_token);
-    return b2;
-  }
-  const b1 = await doCall(at.access_token);
-  if (b1 && typeof b1.err_no === "number" && b1.err_no !== 0) {
-    const at2 = await fetchAccessToken(true);
-    if (at2 && at2.access_token) {
-      const b2 = await doCall(at2.access_token);
-      return b2;
+  const client = getOpenApiClient();
+  const hasTaskStart = client && typeof client.taskStart === "function";
+  const hasLiveDataTaskStart = client && typeof client.liveDataTaskStart === "function";
+  if (client && (hasTaskStart || hasLiveDataTaskStart)) {
+    try {
+      const at = await fetchAccessToken(false);
+      const accessToken = at && at.access_token;
+      const buildReq = (tok) => {
+        const base = { accessToken: tok, appid: String(appid), msgType: String(msgType), roomid: String(roomid) };
+        return TaskStartRequest ? new TaskStartRequest(base) : base;
+      };
+      if (!accessToken) {
+        const at2 = await fetchAccessToken(true);
+        if (!at2 || !at2.access_token) return at2 || { err_no: 40020, err_msg: "access_token unavailable", data: null };
+        const req = buildReq(at2.access_token);
+        let sdkRes = hasTaskStart ? await client.taskStart(req) : await client.liveDataTaskStart(req);
+        if (sdkRes && typeof sdkRes.err_no === "number" && sdkRes.err_no !== 0) {
+          const at3 = await fetchAccessToken(true);
+          if (at3 && at3.access_token) {
+            const req2 = buildReq(at3.access_token);
+            sdkRes = hasTaskStart ? await client.taskStart(req2) : await client.liveDataTaskStart(req2);
+          }
+        }
+        console.log("sdk_call_ok", { api: hasTaskStart ? "taskStart" : "liveDataTaskStart", ts: Date.now() });
+        return sdkRes;
+      }
+      const req = buildReq(accessToken);
+      let sdkRes = hasTaskStart ? await client.taskStart(req) : await client.liveDataTaskStart(req);
+      if (sdkRes && typeof sdkRes.err_no === "number" && sdkRes.err_no !== 0) {
+        const at3 = await fetchAccessToken(true);
+        if (at3 && at3.access_token) {
+          const req2 = buildReq(at3.access_token);
+          sdkRes = hasTaskStart ? await client.taskStart(req2) : await client.liveDataTaskStart(req2);
+        }
+      }
+      console.log("sdk_call_ok", { api: hasTaskStart ? "taskStart" : "liveDataTaskStart", ts: Date.now() });
+      return sdkRes;
+    } catch (e) {
+      console.log("sdk_call_error", { api: hasTaskStart ? "taskStart" : "liveDataTaskStart", err: String(e && e.message || e), ts: Date.now() });
     }
   }
-  return b1;
+  return { err_no: 40023, err_msg: "sdk_unavailable", data: null };
 }
 
 // No public route for access_token; use fetchAccessToken() internally only.
