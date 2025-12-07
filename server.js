@@ -1,6 +1,7 @@
 const express = require("express");
 const http = require("http");
 const WebSocket = require("ws");
+const CredentialClient = require("@open-dy/open_api_credential");
 
 const app = express();
 const PORT = 8000;
@@ -411,6 +412,7 @@ app.post("/api/ws/get_conn_id", async (req, res) => {
 // Access token cache and fetcher
 let ACCESS_TOKEN = null;
 let ACCESS_TOKEN_EXPIRES_AT = 0;
+let credentialClient = null;
 
 async function fetchAccessToken(force = false) {
   const now = Date.now();
@@ -422,17 +424,14 @@ async function fetchAccessToken(force = false) {
   if (!appid || !secret) {
     return { err_no: 40020, err_tips: "missing appid or secret", data: null };
   }
-  const resp = await fetch("https://developer.toutiao.com/api/apps/v2/token", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ appid, secret, grant_type: "client_credential" })
-  });
-  const body = await resp.json().catch(() => ({}));
-  if (!resp.ok || body.err_no !== 0 || !body.data || !body.data.access_token) {
-    return body;
-  }
-  ACCESS_TOKEN = body.data.access_token;
-  const ttl = (body.data.expires_in || 7200) * 1000;
+  if (!credentialClient) credentialClient = new CredentialClient({ clientKey: appid, clientSecret: secret });
+  let tokenRes = null;
+  try { tokenRes = await credentialClient.getClientToken(); } catch (e) { tokenRes = { err_no: -1, err_tips: String(e && e.message || e) }; }
+  const accessToken = tokenRes && (tokenRes.accessToken || (tokenRes.data && tokenRes.data.access_token));
+  const expiresIn = tokenRes && (tokenRes.expiresIn || (tokenRes.data && tokenRes.data.expires_in));
+  if (!accessToken) return tokenRes || { err_no: 40020, err_tips: "access_token unavailable", data: null };
+  ACCESS_TOKEN = accessToken;
+  const ttl = (expiresIn || 7200) * 1000;
   ACCESS_TOKEN_EXPIRES_AT = Date.now() + Math.max(ttl - 300_000, 60_000);
   return { access_token: ACCESS_TOKEN, expires_at: ACCESS_TOKEN_EXPIRES_AT };
 }
