@@ -197,6 +197,59 @@ wss.on("connection", (socket) => {
       })();
       return;
     }
+    // Finish round: parse identifiers and timing
+    // 回合结束：解析房间、对局与结算时间
+    if (data && data.type === "finishRound") {
+      (async () => {
+        const roomId = String(data.roomId || socket.roomId || "");
+        const roundIdRaw = data.roundId !== undefined ? data.roundId : data.RoundId;
+        const roundId = Number(roundIdRaw || (CURRENT_ROUND.get(String(roomId)) || 0));
+        const appid = process.env.DOUYIN_APP_ID;
+        const anchorOpenId = socket.openId ? String(socket.openId) : undefined;
+        const endTime = Math.floor(Date.now() / 1000);
+
+        // Winner normalization (Red/Blue) for group_result_list
+        // 胜者归一化（Red/Blue），用于构造 group_result_list
+        let winner = data.winnerGroup || data.winner || "";
+        const w = String(winner || "").trim().toLowerCase();
+        if (w === "red") winner = "Red"; else if (w === "blue") winner = "Blue";
+
+        // Build group_result_list for round status sync
+        // 构造 group_result_list 以便同步对局状态
+        let groupResultList;
+        if (winner === "Red") groupResultList = [{ groupId: "Red", result: 1 }, { groupId: "Blue", result: 2 }];
+        else if (winner === "Blue") groupResultList = [{ groupId: "Blue", result: 1 }, { groupId: "Red", result: 2 }];
+        else groupResultList = [{ groupId: "Red", result: 3 }, { groupId: "Blue", result: 3 }];
+
+        // Validate required fields
+        // 校验必填参数
+        if (!roomId || !appid || !roundId) {
+          socket.send(JSON.stringify({ type: "finishRound_failed", reason: !roomId ? "missing roomId" : (!roundId ? "missing roundId" : "missing appid") }));
+          return;
+        }
+
+        // Report round end status to Douyin via SDK
+        // 通过 SDK 上报对局结束状态到抖音服务器
+        const res = await roundSyncStatusEnd({ appid, roomId, roundId, endTime, groupResultList, anchorOpenId });
+
+        // Update user stats based on participants' results
+        // 根据参与用户的输赢与积分，更新用户积分与连胜
+        const users = Array.isArray(data.users) ? data.users : (Array.isArray(data.participants) ? data.participants : []);
+        for (const u of users) {
+          const oid = String(u.openId || u.userOpenId || "");
+          const pts = Number(u.deltaPoints || u.points || 0);
+          const isWin = !!(u.isWin || (winner && typeof u.groupId === "string" && String(u.groupId).trim().toLowerCase() === w));
+          if (oid) updateUserStats(oid, pts, isWin);
+        }
+
+        // Clear current round state and respond
+        // 清理当前对局状态并返回结果
+        try { CURRENT_ROUND.delete(String(roomId)); } catch (_) {}
+        console.log("ws_finishRound", { roomId, roundId, winner: winner || null, ts: Date.now() });
+        socket.send(JSON.stringify({ type: "finishRound_ok", roomId, roundId, body: res }));
+      })();
+      return;
+    }
     wss.clients.forEach((client) => {
       if (client.readyState === WebSocket.OPEN) client.send(text);
     });
@@ -444,6 +497,8 @@ async function fetchLiveInfoByToken(token, overrideXToken) {
         const base = { token: String(token), xToken: xt };
         return WebcastmateInfoRequest ? new WebcastmateInfoRequest(base) : base;
       };
+      // Refresh xToken if missing, then invoke SDK
+      // 若缺少 xToken，则刷新令牌后调用 SDK
       if (!xToken) {
         const at2 = await fetchAccessToken(true);
         if (!at2 || !at2.access_token) return at2 || { err_no: 40020, err_tips: "access_token unavailable", data: null };
@@ -462,6 +517,8 @@ async function fetchLiveInfoByToken(token, overrideXToken) {
         console.log("sdk_call_ok", { api: "webcastmateInfo", ts: Date.now() });
         return body;
       }
+      // Use existing xToken to invoke SDK
+      // 使用已有 xToken 调用 SDK
       const req = buildReq(xToken);
       let sdkRes = await client.webcastmateInfo(req);
       let body = sdkRes || {};
@@ -546,6 +603,46 @@ async function roundSyncStatusStart({ appid, roomId, roundId, startTime, anchorO
         console.log("sdk_call_ok", { api: hasRoundSyncLower ? "roundSyncStatus" : (hasRoundSyncUpper ? "RoundSyncStatus" : "gamingConRoundSyncStatus"), ts: Date.now() });
         return sdkRes;
       }
+      const req = buildReq(xToken);
+      const sdkRes = hasRoundSyncLower ? await client.roundSyncStatus(req) : (hasRoundSyncUpper ? await client.RoundSyncStatus(req) : await client.gamingConRoundSyncStatus(req));
+      console.log("sdk_call_ok", { api: hasRoundSyncLower ? "roundSyncStatus" : (hasRoundSyncUpper ? "RoundSyncStatus" : "gamingConRoundSyncStatus"), ts: Date.now() });
+      return sdkRes;
+    } catch (e) {
+      console.log("sdk_call_error", { api: "roundSyncStatus", err: String(e && e.message || e), ts: Date.now() });
+    }
+  }
+  return { err_no: 40023, err_msg: "sdk_unavailable", data: null };
+}
+
+// Round status sync (end)
+// 对局结束状态同步
+// 参考文档：https://developer.open-douyin.com/docs/resource/zh-CN/interaction/develop/server/live-room-scope/user-team-select/sync-game-state
+async function roundSyncStatusEnd({ appid, roomId, roundId, endTime, groupResultList, anchorOpenId }) {
+  const client = getOpenApiClient();
+  const hasRoundSyncLower = client && typeof client.roundSyncStatus === "function";
+  const hasRoundSyncUpper = client && typeof client.RoundSyncStatus === "function";
+  const hasGamingConRound = client && typeof client.gamingConRoundSyncStatus === "function";
+  if (client && (hasRoundSyncLower || hasRoundSyncUpper || hasGamingConRound)) {
+    try {
+      const at = await fetchAccessToken(false);
+      const xToken = at && at.access_token ? at.access_token : null;
+      const buildReq = (xt) => {
+        const base = { appId: String(appid), roomId: String(roomId), roundId: Number(roundId), endTime: Number(endTime), status: 2, xToken: xt, groupResultList: Array.isArray(groupResultList) ? groupResultList : [] };
+        if (anchorOpenId) base.anchorOpenId = String(anchorOpenId);
+        return RoundSyncStatusRequest ? new RoundSyncStatusRequest(base) : base;
+      };
+      // Refresh xToken if missing, then invoke SDK
+      // 若缺少 xToken，则刷新令牌后调用 SDK
+      if (!xToken) {
+        const at2 = await fetchAccessToken(true);
+        if (!at2 || !at2.access_token) return at2 || { err_no: 40020, err_msg: "access_token unavailable", data: null };
+        const req = buildReq(at2.access_token);
+        const sdkRes = hasRoundSyncLower ? await client.roundSyncStatus(req) : (hasRoundSyncUpper ? await client.RoundSyncStatus(req) : await client.gamingConRoundSyncStatus(req));
+        console.log("sdk_call_ok", { api: hasRoundSyncLower ? "roundSyncStatus" : (hasRoundSyncUpper ? "RoundSyncStatus" : "gamingConRoundSyncStatus"), ts: Date.now() });
+        return sdkRes;
+      }
+      // Use existing xToken to invoke SDK
+      // 使用已有 xToken 调用 SDK
       const req = buildReq(xToken);
       const sdkRes = hasRoundSyncLower ? await client.roundSyncStatus(req) : (hasRoundSyncUpper ? await client.RoundSyncStatus(req) : await client.gamingConRoundSyncStatus(req));
       console.log("sdk_call_ok", { api: hasRoundSyncLower ? "roundSyncStatus" : (hasRoundSyncUpper ? "RoundSyncStatus" : "gamingConRoundSyncStatus"), ts: Date.now() });
@@ -668,3 +765,28 @@ function findLatestRoundId(appid, openId, roomId) {
 
 // No public route for access_token; use fetchAccessToken() internally only.
 // 不提供公开的 access_token 路由；仅在内部使用 fetchAccessToken()
+
+// Global user core stats: points and win-streak per openId
+// 全局用户核心数据：按 openId 存储积分与连胜
+const USER_CORE_STATS = new Map();
+
+// Update user's points and streak based on match result
+// 根据胜负更新用户积分与连胜
+function updateUserStats(openId, deltaPoints, isWin) {
+  const oid = String(openId || "");
+  if (!oid) return { err_no: 40001, err_msg: "invalid openId", data: null };
+  const inc = Number(deltaPoints || 0);
+  const cur = USER_CORE_STATS.get(oid) || { points: 0, streak: 0 };
+  let points = Number(cur.points || 0);
+  let streak = Number(cur.streak || 0);
+  if (isWin) {
+    points += Math.max(0, inc);
+    streak = streak + 1;
+  } else {
+    const reduce = Math.max(1, Math.floor(streak * 0.2));
+    streak = Math.max(0, streak - reduce);
+  }
+  const next = { points, streak };
+  USER_CORE_STATS.set(oid, next);
+  return { err_no: 0, err_msg: "ok", data: next };
+}
