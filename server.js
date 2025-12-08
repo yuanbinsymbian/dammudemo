@@ -17,6 +17,9 @@ const TaskStartRequest = OpenApiSdk && OpenApiSdk.TaskStartRequest || null;
 const WebcastmateInfoRequest = OpenApiSdk && OpenApiSdk.WebcastmateInfoRequest || null;
 const RoundSyncStatusRequest = OpenApiSdk && OpenApiSdk.RoundSyncStatusRequest || null;
 const UploadUserGroupInfoRequest = OpenApiSdk && OpenApiSdk.UploadUserGroupInfoRequest || null;
+const RoundUploadUserResultRequest = OpenApiSdk && OpenApiSdk.RoundUploadUserResultRequest || null;
+const RoundUploadRankListRequest = OpenApiSdk && OpenApiSdk.RoundUploadRankListRequest || null;
+const RoundCompleteUploadUserResultRequest = OpenApiSdk && OpenApiSdk.RoundCompleteUploadUserResultRequest || null;
 
 // Basic server setup
 // 基本服务器配置
@@ -241,6 +244,30 @@ wss.on("connection", (socket) => {
           const isWin = !!(u.isWin || (winner && typeof u.groupId === "string" && String(u.groupId).trim().toLowerCase() === w));
           if (oid) updateUserStats(oid, pts, isWin);
         }
+
+        // Build per-user round result payload and upload to Douyin ranking
+        // 构建本局用户结果并上报到抖音排行榜
+        try {
+          const ranked = [...users].map((u) => ({
+            openId: String(u.openId || u.userOpenId || ""),
+            score: Number(u.deltaPoints || u.points || 0),
+            isWin: !!(u.isWin || (winner && typeof u.groupId === "string" && String(u.groupId).trim().toLowerCase() === w))
+          })).filter((x) => x.openId);
+          ranked.sort((a, b) => b.score - a.score);
+          const withRank = ranked.map((x, idx) => ({
+            openId: x.openId,
+            roundResult: x.isWin ? 1 : (winner ? 2 : 3),
+            score: x.score,
+            rank: idx + 1,
+            winningStreakCount: (USER_CORE_STATS.get(x.openId) && USER_CORE_STATS.get(x.openId).streak) || 0,
+            winningPoints: ""
+          }));
+          if (withRank.length > 0) {
+            await roundUploadUserResultBatch({ appid, roomId, roundId, anchorOpenId, userList: withRank });
+            await roundUploadRankList({ appid, roomId, roundId, anchorOpenId, rankList: withRank.slice(0, 150) });
+            await roundCompleteUploadUserResult({ appid, roomId, roundId, anchorOpenId, completeTime: Math.floor(Date.now() / 1000) });
+          }
+        } catch (_) {}
 
         // Clear current round state and respond
         // 清理当前对局状态并返回结果
@@ -489,55 +516,33 @@ async function fetchAccessToken(force = false) {
 // 参考文档：https://developer.open-douyin.com/docs/resource/zh-CN/interaction/develop/server/live-room-scope/live-info
 async function fetchLiveInfoByToken(token, overrideXToken) {
   const client = getOpenApiClient();
-  if (client && typeof client.webcastmateInfo === "function") {
-    try {
-      const at = await fetchAccessToken(false);
-      const xToken = (overrideXToken || (at && at.access_token)) ? (overrideXToken || at.access_token) : null;
-      const buildReq = (xt) => {
-        const base = { token: String(token), xToken: xt };
-        return WebcastmateInfoRequest ? new WebcastmateInfoRequest(base) : base;
-      };
-      // Refresh xToken if missing, then invoke SDK
-      // 若缺少 xToken，则刷新令牌后调用 SDK
-      if (!xToken) {
-        const at2 = await fetchAccessToken(true);
-        if (!at2 || !at2.access_token) return at2 || { err_no: 40020, err_tips: "access_token unavailable", data: null };
-        const req = buildReq(at2.access_token);
-        let sdkRes = await client.webcastmateInfo(req);
-        let body = sdkRes || {};
-        try {
-          const info = body && body.data && body.data.info;
-          const txt = JSON.stringify(body);
-          const m = txt && txt.match(/"room_id"\s*:\s*"?(\d+)"?/);
-          if (info) {
-            if (m) { info.room_id_str = m[1]; info.room_id = m[1]; }
-            else if (info.room_id !== undefined && info.room_id !== null) { const asStr = typeof info.room_id === "string" ? info.room_id : String(info.room_id); info.room_id_str = asStr; info.room_id = asStr; }
-          }
-        } catch (_) {}
-        console.log("sdk_call_ok", { api: "webcastmateInfo", ts: Date.now() });
-        return body;
-      }
-      // Use existing xToken to invoke SDK
-      // 使用已有 xToken 调用 SDK
-      const req = buildReq(xToken);
-      let sdkRes = await client.webcastmateInfo(req);
-      let body = sdkRes || {};
-      try {
-        const info = body && body.data && body.data.info;
-        const txt = JSON.stringify(body);
-        const m = txt && txt.match(/"room_id"\s*:\s*"?(\d+)"?/);
-        if (info) {
-          if (m) { info.room_id_str = m[1]; info.room_id = m[1]; }
-          else if (info.room_id !== undefined && info.room_id !== null) { const asStr = typeof info.room_id === "string" ? info.room_id : String(info.room_id); info.room_id_str = asStr; info.room_id = asStr; }
-        }
-      } catch (_) {}
+  if (!client || typeof client.webcastmateInfo !== "function") return { err_no: 40023, err_tips: "sdk_unavailable", data: null };
+  const buildReq = (xt) => {
+    const base = { token: String(token), xToken: xt };
+    return WebcastmateInfoRequest ? new WebcastmateInfoRequest(base) : base;
+  };
+  try {
+    let sdkRes;
+    if (overrideXToken) {
+      sdkRes = await client.webcastmateInfo(buildReq(overrideXToken));
       console.log("sdk_call_ok", { api: "webcastmateInfo", ts: Date.now() });
-      return body;
-    } catch (e) {
-      return { err_no: -1, err_tips: String(e && e.message || e), data: null };
+    } else {
+      sdkRes = await callSdkWithToken({ client, lower: "webcastmateInfo", upper: "WebcastmateInfo", buildReq });
     }
+    const body = sdkRes || {};
+    try {
+      const info = body && body.data && body.data.info;
+      const txt = JSON.stringify(body);
+      const m = txt && txt.match(/"room_id"\s*:\s*"?(\d+)"?/);
+      if (info) {
+        if (m) { info.room_id_str = m[1]; info.room_id = m[1]; }
+        else if (info.room_id !== undefined && info.room_id !== null) { const asStr = typeof info.room_id === "string" ? info.room_id : String(info.room_id); info.room_id_str = asStr; info.room_id = asStr; }
+      }
+    } catch (_) {}
+    return body;
+  } catch (e) {
+    return { err_no: -1, err_tips: String(e && e.message || e), data: null };
   }
-  return { err_no: 40023, err_tips: "sdk_unavailable", data: null };
 }
 
 // SDK-only live data task start; strictly call taskStart per official docs
@@ -545,37 +550,13 @@ async function fetchLiveInfoByToken(token, overrideXToken) {
 // 参考文档：https://developer.open-douyin.com/docs/resource/zh-CN/interaction/develop/server/live-room-scope/data-open/start-task
 async function startLiveDataTask(appid, roomid, msgType) {
   const client = getOpenApiClient();
-  if (client && typeof client.taskStart === "function") {
-    try {
-      const at = await fetchAccessToken(false);
-      const accessToken = at && at.access_token;
-      const buildReq = (tok) => {
-        const base = { accessToken: tok, appid: String(appid), msgType: String(msgType), roomid: String(roomid) };
-        return TaskStartRequest ? new TaskStartRequest(base) : base;
-      };
-      if (!accessToken) {
-        const at2 = await fetchAccessToken(true);
-        if (!at2 || !at2.access_token) return at2 || { err_no: 40020, err_msg: "access_token unavailable", data: null };
-        let sdkRes = await client.taskStart(buildReq(at2.access_token));
-        if (sdkRes && typeof sdkRes.err_no === "number" && sdkRes.err_no !== 0) {
-          const at3 = await fetchAccessToken(true);
-          if (at3 && at3.access_token) sdkRes = await client.taskStart(buildReq(at3.access_token));
-        }
-        console.log("sdk_call_ok", { api: "taskStart", ts: Date.now() });
-        return sdkRes;
-      }
-      let sdkRes = await client.taskStart(buildReq(accessToken));
-      if (sdkRes && typeof sdkRes.err_no === "number" && sdkRes.err_no !== 0) {
-        const at3 = await fetchAccessToken(true);
-        if (at3 && at3.access_token) sdkRes = await client.taskStart(buildReq(at3.access_token));
-      }
-      console.log("sdk_call_ok", { api: "taskStart", ts: Date.now() });
-      return sdkRes;
-    } catch (e) {
-      console.log("sdk_call_error", { api: "taskStart", err: String(e && e.message || e), ts: Date.now() });
-    }
-  }
-  return { err_no: 40023, err_msg: "sdk_unavailable", data: null };
+  if (!client || typeof client.taskStart !== "function") return { err_no: 40023, err_msg: "sdk_unavailable", data: null };
+  const buildReq = (tok) => {
+    const base = { accessToken: tok, appid: String(appid), msgType: String(msgType), roomid: String(roomid) };
+    return TaskStartRequest ? new TaskStartRequest(base) : base;
+  };
+  const res = await callSdkWithToken({ client, lower: "taskStart", upper: "TaskStart", buildReq });
+  return res;
 }
 
 // SDK-only round status sync (start): status=1, optional anchorOpenId, inject xToken
@@ -583,35 +564,12 @@ async function startLiveDataTask(appid, roomid, msgType) {
 // 参考文档：https://developer.open-douyin.com/docs/resource/zh-CN/interaction/develop/server/live-room-scope/user-team-select/sync-game-state
 async function roundSyncStatusStart({ appid, roomId, roundId, startTime, anchorOpenId }) {
   const client = getOpenApiClient();
-  const hasRoundSyncLower = client && typeof client.roundSyncStatus === "function";
-  const hasRoundSyncUpper = client && typeof client.RoundSyncStatus === "function";
-  const hasGamingConRound = client && typeof client.gamingConRoundSyncStatus === "function";
-  if (client && (hasRoundSyncLower || hasRoundSyncUpper || hasGamingConRound)) {
-    try {
-      const at = await fetchAccessToken(false);
-      const xToken = at && at.access_token ? at.access_token : null;
-      const buildReq = (xt) => {
-        const base = { appId: String(appid), roomId: String(roomId), roundId: Number(roundId), startTime: Number(startTime), status: 1, xToken: xt };
-        if (anchorOpenId) base.anchorOpenId = String(anchorOpenId);
-        return RoundSyncStatusRequest ? new RoundSyncStatusRequest(base) : base;
-      };
-      if (!xToken) {
-        const at2 = await fetchAccessToken(true);
-        if (!at2 || !at2.access_token) return at2 || { err_no: 40020, err_msg: "access_token unavailable", data: null };
-        const req = buildReq(at2.access_token);
-        const sdkRes = hasRoundSyncLower ? await client.roundSyncStatus(req) : (hasRoundSyncUpper ? await client.RoundSyncStatus(req) : await client.gamingConRoundSyncStatus(req));
-        console.log("sdk_call_ok", { api: hasRoundSyncLower ? "roundSyncStatus" : (hasRoundSyncUpper ? "RoundSyncStatus" : "gamingConRoundSyncStatus"), ts: Date.now() });
-        return sdkRes;
-      }
-      const req = buildReq(xToken);
-      const sdkRes = hasRoundSyncLower ? await client.roundSyncStatus(req) : (hasRoundSyncUpper ? await client.RoundSyncStatus(req) : await client.gamingConRoundSyncStatus(req));
-      console.log("sdk_call_ok", { api: hasRoundSyncLower ? "roundSyncStatus" : (hasRoundSyncUpper ? "RoundSyncStatus" : "gamingConRoundSyncStatus"), ts: Date.now() });
-      return sdkRes;
-    } catch (e) {
-      console.log("sdk_call_error", { api: "roundSyncStatus", err: String(e && e.message || e), ts: Date.now() });
-    }
-  }
-  return { err_no: 40023, err_msg: "sdk_unavailable", data: null };
+  const buildReq = (xt) => {
+    const base = { appId: String(appid), roomId: String(roomId), roundId: Number(roundId), startTime: Number(startTime), status: 1, xToken: xt };
+    if (anchorOpenId) base.anchorOpenId = String(anchorOpenId);
+    return RoundSyncStatusRequest ? new RoundSyncStatusRequest(base) : base;
+  };
+  return await callSdkWithToken({ client, lower: "roundSyncStatus", upper: "RoundSyncStatus", alt: "gamingConRoundSyncStatus", buildReq });
 }
 
 // Round status sync (end)
@@ -619,39 +577,61 @@ async function roundSyncStatusStart({ appid, roomId, roundId, startTime, anchorO
 // 参考文档：https://developer.open-douyin.com/docs/resource/zh-CN/interaction/develop/server/live-room-scope/user-team-select/sync-game-state
 async function roundSyncStatusEnd({ appid, roomId, roundId, endTime, groupResultList, anchorOpenId }) {
   const client = getOpenApiClient();
-  const hasRoundSyncLower = client && typeof client.roundSyncStatus === "function";
-  const hasRoundSyncUpper = client && typeof client.RoundSyncStatus === "function";
-  const hasGamingConRound = client && typeof client.gamingConRoundSyncStatus === "function";
-  if (client && (hasRoundSyncLower || hasRoundSyncUpper || hasGamingConRound)) {
-    try {
-      const at = await fetchAccessToken(false);
-      const xToken = at && at.access_token ? at.access_token : null;
-      const buildReq = (xt) => {
-        const base = { appId: String(appid), roomId: String(roomId), roundId: Number(roundId), endTime: Number(endTime), status: 2, xToken: xt, groupResultList: Array.isArray(groupResultList) ? groupResultList : [] };
-        if (anchorOpenId) base.anchorOpenId = String(anchorOpenId);
-        return RoundSyncStatusRequest ? new RoundSyncStatusRequest(base) : base;
-      };
-      // Refresh xToken if missing, then invoke SDK
-      // 若缺少 xToken，则刷新令牌后调用 SDK
-      if (!xToken) {
-        const at2 = await fetchAccessToken(true);
-        if (!at2 || !at2.access_token) return at2 || { err_no: 40020, err_msg: "access_token unavailable", data: null };
-        const req = buildReq(at2.access_token);
-        const sdkRes = hasRoundSyncLower ? await client.roundSyncStatus(req) : (hasRoundSyncUpper ? await client.RoundSyncStatus(req) : await client.gamingConRoundSyncStatus(req));
-        console.log("sdk_call_ok", { api: hasRoundSyncLower ? "roundSyncStatus" : (hasRoundSyncUpper ? "RoundSyncStatus" : "gamingConRoundSyncStatus"), ts: Date.now() });
-        return sdkRes;
-      }
-      // Use existing xToken to invoke SDK
-      // 使用已有 xToken 调用 SDK
-      const req = buildReq(xToken);
-      const sdkRes = hasRoundSyncLower ? await client.roundSyncStatus(req) : (hasRoundSyncUpper ? await client.RoundSyncStatus(req) : await client.gamingConRoundSyncStatus(req));
-      console.log("sdk_call_ok", { api: hasRoundSyncLower ? "roundSyncStatus" : (hasRoundSyncUpper ? "RoundSyncStatus" : "gamingConRoundSyncStatus"), ts: Date.now() });
-      return sdkRes;
-    } catch (e) {
-      console.log("sdk_call_error", { api: "roundSyncStatus", err: String(e && e.message || e), ts: Date.now() });
-    }
+  const buildReq = (xt) => {
+    const base = { appId: String(appid), roomId: String(roomId), roundId: Number(roundId), endTime: Number(endTime), status: 2, xToken: xt, groupResultList: Array.isArray(groupResultList) ? groupResultList : [] };
+    if (anchorOpenId) base.anchorOpenId = String(anchorOpenId);
+    return RoundSyncStatusRequest ? new RoundSyncStatusRequest(base) : base;
+  };
+  return await callSdkWithToken({ client, lower: "roundSyncStatus", upper: "RoundSyncStatus", alt: "gamingConRoundSyncStatus", buildReq });
+}
+
+// Upload per-user round result list (batched by 50)
+// 上报本局用户的结果列表（按 50 条分批）
+async function roundUploadUserResultBatch({ appid, roomId, roundId, anchorOpenId, userList }) {
+  const CHUNK = 50;
+  for (let i = 0; i < userList.length; i += CHUNK) {
+    const slice = userList.slice(i, i + CHUNK);
+    await roundUploadUserResult({ appid, roomId, roundId, anchorOpenId, userList: slice });
   }
-  return { err_no: 40023, err_msg: "sdk_unavailable", data: null };
+}
+
+// Upload per-user round result via SDK
+// 通过 SDK 上报用户的对局结果
+// 参考文档：https://developer.open-douyin.com/docs/resource/zh-CN/interaction/develop/server/live-room-scope/user-scores-rank/user-data-report
+async function roundUploadUserResult({ appid, roomId, roundId, anchorOpenId, userList }) {
+  const client = getOpenApiClient();
+  const buildReq = (xt) => {
+    const base = { appId: String(appid), roomId: String(roomId), roundId: Number(roundId), xToken: xt, userList: Array.isArray(userList) ? userList : [] };
+    if (anchorOpenId) base.anchorOpenId = String(anchorOpenId);
+    return RoundUploadUserResultRequest ? new RoundUploadUserResultRequest(base) : base;
+  };
+  return await callSdkWithToken({ client, lower: "roundUploadUserResult", upper: "RoundUploadUserResult", buildReq, logCtx: { count: (userList && userList.length) || 0 } });
+}
+
+// Upload round rank list (Top N up to 150) after round ends
+// 在回合结束后上报榜单列表（最多 Top150）
+// 参考文档：https://developer.open-douyin.com/docs/resource/zh-CN/interaction/develop/server/live-room-scope/user-scores-rank/game-list-report
+async function roundUploadRankList({ appid, roomId, roundId, anchorOpenId, rankList }) {
+  const client = getOpenApiClient();
+  const buildReq = (xt) => {
+    const base = { appId: String(appid), roomId: String(roomId), roundId: Number(roundId), xToken: xt, rankList: Array.isArray(rankList) ? rankList : [] };
+    if (anchorOpenId) base.anchorOpenId = String(anchorOpenId);
+    return RoundUploadRankListRequest ? new RoundUploadRankListRequest(base) : base;
+  };
+  return await callSdkWithToken({ client, lower: "roundUploadRankList", upper: "RoundUploadRankList", buildReq, logCtx: { count: (rankList && rankList.length) || 0 } });
+}
+
+// Mark completion of user result upload for current round
+// 标记本局用户对局数据上报完成
+// 参考文档：https://developer.open-douyin.com/docs/resource/zh-CN/interaction/develop/server/live-room-scope/user-scores-rank/finish-user-data-report
+async function roundCompleteUploadUserResult({ appid, roomId, roundId, anchorOpenId, completeTime }) {
+  const client = getOpenApiClient();
+  const buildReq = (xt) => {
+    const base = { appId: String(appid), roomId: String(roomId), roundId: Number(roundId), completeTime: Number(completeTime), xToken: xt };
+    if (anchorOpenId) base.anchorOpenId = String(anchorOpenId);
+    return RoundCompleteUploadUserResultRequest ? new RoundCompleteUploadUserResultRequest(base) : base;
+  };
+  return await callSdkWithToken({ client, lower: "roundCompleteUploadUserResult", upper: "RoundCompleteUploadUserResult", buildReq });
 }
 
 // Upload user group info to Douyin server after group assignment
@@ -659,35 +639,11 @@ async function roundSyncStatusEnd({ appid, roomId, roundId, endTime, groupResult
 // 参考文档：https://developer.open-douyin.com/docs/resource/zh-CN/interaction/develop/server/live-room-scope/user-team-select/report-camp-data
 async function uploadUserGroupInfo({ appid, openId, roomId, roundId, groupId }) {
   const client = getOpenApiClient();
-  const hasLower = client && typeof client.uploadUserGroupInfo === "function";
-  const hasUpper = client && typeof client.UploadUserGroupInfo === "function";
-  const hasGamingCon = client && typeof client.gamingConRoundUploadUserGroupInfo === "function";
-  if (client && (hasLower || hasUpper || hasGamingCon)) {
-    try {
-      const at = await fetchAccessToken(false);
-      const xToken = at && at.access_token ? at.access_token : null;
-      const buildReq = (xt) => {
-        const base = { appId: String(appid), groupId: String(groupId), openId: String(openId), roomId: String(roomId), roundId: Number(roundId), xToken: xt };
-        return UploadUserGroupInfoRequest ? new UploadUserGroupInfoRequest(base) : base;
-      };
-      const ensureCall = async (req) => hasLower ? client.uploadUserGroupInfo(req) : (hasUpper ? client.UploadUserGroupInfo(req) : client.gamingConRoundUploadUserGroupInfo(req));
-      if (!xToken) {
-        const at2 = await fetchAccessToken(true);
-        if (!at2 || !at2.access_token) return at2 || { err_no: 40020, err_msg: "access_token unavailable", data: null };
-        const req = buildReq(at2.access_token);
-        const sdkRes = await ensureCall(req);
-        console.log("sdk_call_ok", { api: hasLower ? "uploadUserGroupInfo" : (hasUpper ? "UploadUserGroupInfo" : "gamingConRoundUploadUserGroupInfo"), ts: Date.now() });
-        return sdkRes;
-      }
-      const req = buildReq(xToken);
-      const sdkRes = await ensureCall(req);
-      console.log("sdk_call_ok", { api: hasLower ? "uploadUserGroupInfo" : (hasUpper ? "UploadUserGroupInfo" : "gamingConRoundUploadUserGroupInfo"), ts: Date.now() });
-      return sdkRes;
-    } catch (e) {
-      console.log("sdk_call_error", { api: "uploadUserGroupInfo", err: String(e && e.message || e), ts: Date.now() });
-    }
-  }
-  return { err_no: 40023, err_msg: "sdk_unavailable", data: null };
+  const buildReq = (xt) => {
+    const base = { appId: String(appid), groupId: String(groupId), openId: String(openId), roomId: String(roomId), roundId: Number(roundId), xToken: xt };
+    return UploadUserGroupInfoRequest ? new UploadUserGroupInfoRequest(base) : base;
+  };
+  return await callSdkWithToken({ client, lower: "uploadUserGroupInfo", upper: "UploadUserGroupInfo", alt: "gamingConRoundUploadUserGroupInfo", buildReq });
 }
 
 // Map user comment text to a game group: "1"/"左" → Blue, "2"/"右" → Red
@@ -765,6 +721,38 @@ function findLatestRoundId(appid, openId, roomId) {
 
 // No public route for access_token; use fetchAccessToken() internally only.
 // 不提供公开的 access_token 路由；仅在内部使用 fetchAccessToken()
+
+function getSdkMethod(client, lower, upper, alt) {
+  let fn = null; let api = null;
+  if (client && lower && typeof client[lower] === "function") { fn = client[lower]; api = lower; }
+  else if (client && upper && typeof client[upper] === "function") { fn = client[upper]; api = upper; }
+  else if (client && alt && typeof client[alt] === "function") { fn = client[alt]; api = alt; }
+  return { fn, api };
+}
+
+async function callSdkWithToken({ client, lower, upper, alt, buildReq, logCtx }) {
+  const { fn, api } = getSdkMethod(client, lower, upper, alt);
+  if (!fn) return { err_no: 40023, err_msg: "sdk_unavailable", data: null };
+  try {
+    const at = await fetchAccessToken(false);
+    const xToken = at && at.access_token ? at.access_token : null;
+    if (!xToken) {
+      const at2 = await fetchAccessToken(true);
+      if (!at2 || !at2.access_token) return at2 || { err_no: 40020, err_msg: "access_token unavailable", data: null };
+      const req = buildReq(at2.access_token);
+      const sdkRes = await fn.call(client, req);
+      console.log("sdk_call_ok", Object.assign({ api, ts: Date.now() }, logCtx || {}));
+      return sdkRes;
+    }
+    const req = buildReq(xToken);
+    const sdkRes = await fn.call(client, req);
+    console.log("sdk_call_ok", Object.assign({ api, ts: Date.now() }, logCtx || {}));
+    return sdkRes;
+  } catch (e) {
+    console.log("sdk_call_error", { api: api, err: String(e && e.message || e), ts: Date.now() });
+    return { err_no: -1, err_msg: String(e && e.message || e), data: null };
+  }
+}
 
 // Global user core stats: points and win-streak per openId
 // 全局用户核心数据：按 openId 存储积分与连胜
