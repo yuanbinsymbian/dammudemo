@@ -17,7 +17,7 @@ def parse_participants(arg):
         oid = items[0].strip()
         pts = int(items[1].strip())
         win = items[2].strip().lower() in ("1","true","yes","y")
-        res.append({"openId": oid, "deltaPoints": pts, "isWin": win})
+        res.append({"openId": oid, "addPoints": pts, "isWin": win})
     return res
 
 def main():

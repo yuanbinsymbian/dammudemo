@@ -240,7 +240,7 @@ wss.on("connection", (socket) => {
         const users = Array.isArray(data.users) ? data.users : (Array.isArray(data.participants) ? data.participants : []);
         for (const u of users) {
           const oid = String(u.openId || u.userOpenId || "");
-          const pts = Number(u.deltaPoints || u.points || 0);
+          const pts = Number(u.addPoints || u.points || 0);
           const isWin = !!(u.isWin || (winner && typeof u.groupId === "string" && String(u.groupId).trim().toLowerCase() === w));
           if (oid) updateUserStats(oid, pts, isWin);
         }
@@ -250,7 +250,7 @@ wss.on("connection", (socket) => {
         try {
           const ranked = [...users].map((u) => ({
             openId: String(u.openId || u.userOpenId || ""),
-            score: Number(u.deltaPoints || u.points || 0),
+            score: Number(u.addPoints || u.points || 0),
             isWin: !!(u.isWin || (winner && typeof u.groupId === "string" && String(u.groupId).trim().toLowerCase() === w))
           })).filter((x) => x.openId);
           ranked.sort((a, b) => b.score - a.score);
