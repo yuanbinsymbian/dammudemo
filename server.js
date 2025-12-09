@@ -211,18 +211,25 @@ wss.on("connection", (socket) => {
         const anchorOpenId = socket.openId ? String(socket.openId) : undefined;
         const endTime = Math.floor(Date.now() / 1000);
 
-        // Winner normalization (Red/Blue) for group_result_list
-        // 胜者归一化（Red/Blue），用于构造 group_result_list
-        let winner = data.winnerGroup || data.winner || "";
-        const w = String(winner || "").trim().toLowerCase();
-        if (w === "red") winner = "Red"; else if (w === "blue") winner = "Blue";
-
-        // Build group_result_list for round status sync
-        // 构造 group_result_list 以便同步对局状态
-        let groupResultList;
-        if (winner === "Red") groupResultList = [{ groupId: "Red", result: 1 }, { groupId: "Blue", result: 2 }];
-        else if (winner === "Blue") groupResultList = [{ groupId: "Blue", result: 1 }, { groupId: "Red", result: 2 }];
-        else groupResultList = [{ groupId: "Red", result: 3 }, { groupId: "Blue", result: 3 }];
+        // Prefer client-provided group results
+        // 优先使用客户端传入的分组胜负结果
+        const inputGroupResults = Array.isArray(data.groupResults) ? data.groupResults : (Array.isArray(data.group_result_list) ? data.group_result_list : (Array.isArray(data.groupResultList) ? data.groupResultList : null));
+        const groupResultList = (inputGroupResults || []).map((item) => {
+          const gid = item.groupId !== undefined ? item.groupId : item.group_id;
+          let res = item.result;
+          if (typeof res === "string") {
+            const r = res.trim().toLowerCase();
+            res = (
+              r === "unknown" ? 0 :
+              (r === "victory" || r === "win") ? 1 :
+              (r === "fail" || r === "lose") ? 2 :
+              (r === "tie" || r === "draw") ? 3 : 0
+            );
+          }
+          if (res !== 0 && res !== 1 && res !== 2 && res !== 3) res = 0;
+          return { groupId: String(gid), result: Number(res) };
+        });
+        
 
         // Validate required fields
         // 校验必填参数
@@ -237,11 +244,11 @@ wss.on("connection", (socket) => {
 
         // Update user stats based on participants' results
         // 根据参与用户的输赢与积分，更新用户积分与连胜
-        const users = Array.isArray(data.users) ? data.users : (Array.isArray(data.participants) ? data.participants : []);
+        const users = Array.isArray(data.users) ? data.users : [];
         for (const u of users) {
           const oid = String(u.openId || u.userOpenId || "");
           const pts = Number(u.addPoints || u.points || 0);
-          const isWin = !!(u.isWin || (winner && typeof u.groupId === "string" && String(u.groupId).trim().toLowerCase() === w));
+          const isWin = u.isWin === true ? true : (u.isWin === false ? false : null);
           if (oid) updateUserStats(oid, pts, isWin);
         }
 
@@ -256,7 +263,7 @@ wss.on("connection", (socket) => {
           ranked.sort((a, b) => b.score - a.score);
           const withRank = ranked.map((x, idx) => ({
             openId: x.openId,
-            roundResult: x.isWin ? 1 : (winner ? 2 : 3),
+            roundResult: x.isWin === true ? 1 : (x.isWin === false ? 2 : 0),
             score: x.score,
             rank: idx + 1,
             winningStreakCount: (USER_CORE_STATS.get(x.openId) && USER_CORE_STATS.get(x.openId).streak) || 0,
@@ -760,10 +767,10 @@ const USER_CORE_STATS = new Map();
 
 // Update user's points and streak based on match result
 // 根据胜负更新用户积分与连胜
-function updateUserStats(openId, deltaPoints, isWin) {
+function updateUserStats(openId, addPoints, isWin) {
   const oid = String(openId || "");
   if (!oid) return { err_no: 40001, err_msg: "invalid openId", data: null };
-  const inc = Number(deltaPoints || 0);
+  const inc = Number(addPoints || 0);
   const cur = USER_CORE_STATS.get(oid) || { points: 0, streak: 0 };
   let points = Number(cur.points || 0);
   let streak = Number(cur.streak || 0);
