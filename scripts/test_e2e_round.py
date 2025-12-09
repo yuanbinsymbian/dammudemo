@@ -1,6 +1,5 @@
-import sys, json, time, random, hashlib, base64
+import sys, json, time, random
 import websocket
-from urllib import request
 
 def ws_send(ws, obj):
     ws.send(json.dumps(obj))
@@ -30,30 +29,33 @@ def parse_participants(arg):
     return res
 
 def main():
-    if len(sys.argv) < 7:
-        print('usage: test_e2e_round.py <domain> <room_id> <round_id> <winner(Red|Blue|Draw)> <comment_open_id_left> <comment_open_id_right> [participants]')
-        print('participants format: openId,points,isWin;openId2,points2,isWin2')
+    if len(sys.argv) < 4:
+        print('usage: test_e2e_round.py <domain> <room_id> <round_id> [user_count]')
         sys.exit(1)
     domain = sys.argv[1]
     room_id = sys.argv[2]
     round_id = int(sys.argv[3])
-    winner = sys.argv[4]
-    c_left = sys.argv[5]
-    c_right = sys.argv[6]
-    participants_arg = sys.argv[7] if len(sys.argv) >= 8 else ''
-    participants = parse_participants(participants_arg)
+    user_count = int(sys.argv[4]) if len(sys.argv) >= 5 else 4
 
     ws = websocket.create_connection(f'wss://{domain}/ws')
     ws_send(ws, {'type':'join','roomId':room_id})
     ws_send(ws, {'type':'startRound','roundId':round_id,'startTime':int(time.time())})
 
-    # simulate live comment callbacks to assign groups
-    cb_url = f'https://{domain}/live_data_callback'
-    print(post_json(cb_url, {'room_id':room_id,'user_open_id':c_left,'content':'左'}, {'content-type':'application/json','x-msg-type':'live_comment','x-roomid':room_id}))
-    print(post_json(cb_url, {'room_id':room_id,'user_open_id':c_right,'content':'右'}, {'content-type':'application/json','x-msg-type':'live_comment','x-roomid':room_id}))
+    outcome = random.choice(['RedWin','BlueWin','Tie'])
+    if outcome == 'RedWin':
+        group_results = [{'groupId':'Red','result':1},{'groupId':'Blue','result':2}]
+    elif outcome == 'BlueWin':
+        group_results = [{'groupId':'Blue','result':1},{'groupId':'Red','result':2}]
+    else:
+        group_results = [{'groupId':'Red','result':3},{'groupId':'Blue','result':3}]
 
-    # finish round and upload results
-    ws_send(ws, {'type':'finishRound','roomId':room_id,'roundId':round_id,'winner':winner,'users':participants})
+    users = []
+    for i in range(user_count):
+        gid = random.choice(['Red','Blue'])
+        win = (outcome == 'Tie') and False or ((outcome == 'RedWin' and gid == 'Red') or (outcome == 'BlueWin' and gid == 'Blue'))
+        users.append({'openId': f'user_{int(time.time())}_{i}', 'addPoints': random.randint(1, 15), 'isWin': win, 'groupId': gid})
+
+    ws_send(ws, {'type':'finishRound','roomId':room_id,'roundId':round_id,'groupResults':group_results,'users':users})
 
     start = time.time()
     while time.time() - start < 15:
