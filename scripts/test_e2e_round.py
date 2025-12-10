@@ -30,15 +30,31 @@ def parse_participants(arg):
 
 def main():
     if len(sys.argv) < 4:
-        print('usage: test_e2e_round.py <domain> <room_id> <round_id> [user_count]')
+        print('usage: test_e2e_round.py <domain> (--roomId <room_id> | --token <token>) <round_id> [user_count]')
         sys.exit(1)
     domain = sys.argv[1]
-    room_id = sys.argv[2]
-    round_id = int(sys.argv[3])
-    user_count = int(sys.argv[4]) if len(sys.argv) >= 5 else 4
+    token = None
+    room_id = None
+    idx = 2
+    mode = sys.argv[idx]
+    if mode == '--token':
+        token = sys.argv[idx+1]
+        round_id = int(sys.argv[idx+2])
+        user_count = int(sys.argv[idx+3]) if len(sys.argv) >= idx+4 else 4
+    elif mode == '--roomId':
+        room_id = sys.argv[idx+1]
+        round_id = int(sys.argv[idx+2])
+        user_count = int(sys.argv[idx+3]) if len(sys.argv) >= idx+4 else 4
+    else:
+        room_id = sys.argv[2]
+        round_id = int(sys.argv[3])
+        user_count = int(sys.argv[4]) if len(sys.argv) >= 5 else 4
 
     ws = websocket.create_connection(f'wss://{domain}/ws')
-    ws_send(ws, {'type':'join','roomId':room_id})
+    if token:
+        ws_send(ws, {'type':'join','token':token})
+    else:
+        ws_send(ws, {'type':'join','roomId':room_id})
     ws_send(ws, {'type':'startRound','roundId':round_id,'startTime':int(time.time())})
 
     outcome = random.choice(['RedWin','BlueWin','Tie'])
@@ -55,8 +71,12 @@ def main():
         win = (outcome == 'Tie') and False or ((outcome == 'RedWin' and gid == 'Red') or (outcome == 'BlueWin' and gid == 'Blue'))
         users.append({'openId': f'user_{int(time.time())}_{i}', 'addPoints': random.randint(1, 15), 'isWin': win, 'groupId': gid})
 
-    ws_send(ws, {'type':'finishRound','roomId':room_id,'roundId':round_id,'groupResults':group_results,'users':users})
-    print('payload:', json.dumps({'groupResults':group_results,'users':users}, ensure_ascii=False))
+    payload = {'type':'finishRound','groupResults':group_results,'users':users}
+    if room_id:
+        payload['roomId'] = room_id
+    payload['roundId'] = round_id
+    ws_send(ws, payload)
+    print('payload:', json.dumps(payload, ensure_ascii=False))
     ok = False
     start = time.time()
     while True:
