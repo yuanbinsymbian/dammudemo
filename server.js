@@ -4,6 +4,7 @@ const express = require("express");
 const http = require("http");
 const WebSocket = require("ws");
 const crypto = require("crypto");
+const mysql = require('mysql2/promise');
 // Douyin OpenAPI credential SDK — used to acquire access_token (xToken)
 // 抖音凭据 SDK：用于获取 access_token（xToken）
 const CredentialClient = require("@open-dy/open_api_credential");
