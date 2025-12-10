@@ -7,7 +7,9 @@ const crypto = require("crypto");
 const mysql = require('mysql2/promise');
 // Douyin OpenAPI credential SDK — used to acquire access_token (xToken)
 // 抖音凭据 SDK：用于获取 access_token（xToken）
-const CredentialClient = require("@open-dy/open_api_credential");
+let OpenDyCred = null;
+try { OpenDyCred = require("@open-dy/open_api_credential"); } catch (e) { OpenDyCred = null; console.log("cred_require_error", { pkg: "@open-dy/open_api_credential", err: String(e && e.message || e), ts: Date.now() }); }
+const CredentialClient = OpenDyCred && (OpenDyCred.default || OpenDyCred) || null;
 let OpenApiSdk;
 // Douyin OpenAPI SDK — business APIs (live info, task start, round status)
 // 抖音 OpenAPI SDK：包含直播信息、任务启动、对局状态同步等接口
