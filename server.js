@@ -798,7 +798,7 @@ async function selectUserCoreStats(openId) {
   try {
     // 获取连接 + 执行查询（一步到位）
     const [rows, fields] = await pool.execute(
-      'SELECT * FROM user_core_stats WHERE openId = ? ORDER BY points DESC', // SQL 语句
+      'SELECT * FROM user_core_stats WHERE open_id = ? ORDER BY points DESC', // SQL 语句
       [String(openId || "")] // 占位符参数（无则传空数组）
     );
     console.log('查询UserCoreStats数据:', rows);
@@ -812,7 +812,7 @@ async function updateUserCoreStats(openId, points, streak) {
   try {
     // 获取连接 + 执行查询（一步到位）
     const [rows, fields] = await pool.execute(
-      'INSERT INTO user_core_stats (openId, points, streak) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE points = ?, streak = ?', // SQL 语句
+      'INSERT INTO user_core_stats (open_id, points, streak) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE points = ?, streak = ?', // SQL 语句
       [String(openId || ""), points, streak, points, streak] // 占位符参数（无则传空数组）
     );
     console.log('更新UserCoreStats数据:', rows);
