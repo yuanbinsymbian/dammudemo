@@ -32,15 +32,27 @@ def main():
 
     payload = {"type":"finishRound","roomId":room_id,"roundId":round_id,"groupResults":group_results,"users":users}
     ws.send(json.dumps(payload))
+    print("payload:", json.dumps(payload, ensure_ascii=False))
+    ok = False
     start = time.time()
-    while time.time() - start < 10:
+    while time.time() - start < 15:
         try:
-            ws.settimeout(2)
+            ws.settimeout(3)
             msg = ws.recv()
             print(msg)
+            try:
+                obj = json.loads(msg)
+                if obj.get('type') == 'finishRound_ok':
+                    ok = True
+                    break
+            except Exception:
+                pass
         except websocket.WebSocketTimeoutException:
             pass
     ws.close()
+    if not ok:
+        print('finishRound response not received')
+        sys.exit(2)
 
 if __name__ == "__main__":
     main()

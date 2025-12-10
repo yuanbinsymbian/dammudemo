@@ -56,17 +56,28 @@ def main():
         users.append({'openId': f'user_{int(time.time())}_{i}', 'addPoints': random.randint(1, 15), 'isWin': win, 'groupId': gid})
 
     ws_send(ws, {'type':'finishRound','roomId':room_id,'roundId':round_id,'groupResults':group_results,'users':users})
-
+    print('payload:', json.dumps({'groupResults':group_results,'users':users}, ensure_ascii=False))
+    ok = False
     start = time.time()
     while time.time() - start < 15:
         try:
-            ws.settimeout(2)
+            ws.settimeout(3)
             msg = ws.recv()
             print(msg)
+            try:
+                obj = json.loads(msg)
+                if obj.get('type') == 'finishRound_ok':
+                    ok = True
+                    break
+            except Exception:
+                pass
         except websocket.WebSocketTimeoutException:
             pass
         time.sleep(1)
     ws.close()
+    if not ok:
+        print('finishRound response not received')
+        sys.exit(2)
 
 if __name__ == '__main__':
     main()
