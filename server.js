@@ -424,7 +424,7 @@ app.post("/live_data_callback", async (req, res) => {
 
 // Audience camp selection push (developer endpoint)
 // 观众选择阵营推送（开发者提供接口）：记录并返回最终分组
-// 注意！！！！这里没有采用抖音给的分组，如果有冲突，保留了原有分组
+// 注意！！！！这里采用抖音给的分组，如果有冲突，以抖音的分组为准
 // 参考文档：https://developer.open-douyin.com/docs/resource/zh-CN/interaction/develop/server/live-room-scope/user-team-select/audience-camp-dev
 app.post("/api/user_group/push", async (req, res) => {
   try {
@@ -463,6 +463,17 @@ app.post("/api/user_group/push", async (req, res) => {
     }
     const status = roundId ? 1 : 2;
     console.log("user_group_push_out", { roomId, roundId, status, finalGroup, ts: Date.now() });
+    try {
+      const msg = { type: "group_push", data: { room_id: roomId, round_id: roundId, group_id: finalGroup, open_id: openId }, ts: Date.now() };
+      wss.clients.forEach((client) => {
+        if (client.readyState === WebSocket.OPEN && (!roomId || client.roomId === roomId)) {
+          client.send(JSON.stringify(msg));
+        }
+      });
+      console.log("ws_group_push_broadcast", { roomId, roundId, groupId: finalGroup, openId, ts: Date.now() });
+    } catch (e) {
+      console.log("ws_group_push_broadcast_error", { err: String(e && e.message || e), ts: Date.now() });
+    }
     return res.status(200).json({ errcode: 0, errmsg: "success", data: { round_id: roundId, round_status: status, group_id: finalGroup } });
   } catch (e) {
     console.log("user_group_push_error", { err: String(e && e.message || e), ts: Date.now() });
