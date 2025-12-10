@@ -523,7 +523,22 @@ async function fetchAccessToken(force = false) {
 // 参考文档：https://developer.open-douyin.com/docs/resource/zh-CN/interaction/develop/server/live-room-scope/live-info
 async function fetchLiveInfoByToken(token, overrideXToken) {
   const client = getOpenApiClient();
-  if (!client || typeof client.webcastmateInfo !== "function") return { err_no: 40023, err_tips: "sdk_unavailable", data: null };
+  if (!client) {
+    console.log("sdk_client_missing", { api: "webcastmateInfo", ts: Date.now() });
+    return { err_no: 40023, err_tips: "sdk_unavailable", data: null };
+  }
+  if (typeof client.webcastmateInfo !== "function") {
+    let methods = [];
+    try {
+      const own = Object.keys(client);
+      const proto = Object.getOwnPropertyNames(Object.getPrototypeOf(client));
+      methods = Array.from(new Set([...(own || []), ...(proto || [])])).filter((k) => typeof client[k] === "function").sort();
+    } catch (e) {
+      methods = [];
+    }
+    console.log("sdk_method_missing", { api: "webcastmateInfo", methods, ts: Date.now() });
+    return { err_no: 40023, err_tips: "sdk_unavailable", data: null };
+  }
   try {
     let xt = overrideXToken;
     if (!xt) {
