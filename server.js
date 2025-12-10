@@ -454,8 +454,9 @@ app.post("/api/user_group/push", async (req, res) => {
     const prev = USER_ROUND_GROUP.get(key);
     let finalGroup = requestedGroup;
     if (prev && prev !== requestedGroup) {
-      finalGroup = prev;
-      console.log("user_group_conflict", { roomId, roundId, openId, requested: requestedGroup, prev, ts: Date.now() });
+      finalGroup = requestedGroup;
+      USER_ROUND_GROUP.set(key, finalGroup);
+      console.log("user_group_overwrite", { roomId, roundId, openId, requested: requestedGroup, prev, ts: Date.now() });
     } else {
       USER_ROUND_GROUP.set(key, finalGroup);
       console.log("user_group_set", { roomId, roundId, openId, groupId: finalGroup, ts: Date.now() });
