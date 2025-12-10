@@ -29,7 +29,22 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 const WS_HEARTBEAT_INTERVAL_MS = parseInt(process.env.WS_HEARTBEAT_INTERVAL_MS || "20000", 10);
 const WS_HEARTBEAT_IDLE_TIMEOUT_MS = parseInt(process.env.WS_HEARTBEAT_IDLE_TIMEOUT_MS || "120000", 10);
- 
+const MYSQL_HOST = process.env.MYSQL_HOST || "mysqld9a067bf9939.rds.ivolces.com";
+const MYSQL_PORT = parseInt(process.env.MYSQL_PORT || "3306", 10);
+const MYSQL_USER = process.env.MYSQL_USER || "yykjzhc";
+const MYSQL_PASSWORD = process.env.MYSQL_PASSWORD || "yuanyekeji$DSZ";
+const MYSQL_DATABASE = process.env.MYSQL_DATABASE || "dev";
+// 创建连接池
+const pool = mysql.createPool({
+  host: MYSQL_HOST,
+  port: MYSQL_PORT,
+  user: MYSQL_USER,
+  password: MYSQL_PASSWORD,
+  database: MYSQL_DATABASE,
+  waitForConnections: true, // 无可用连接时等待
+  connectionLimit: 100,      // 最大连接数
+  queueLimit: 0             // 等待队列无限制
+});
 
 app.get("/v1/ping", (req, res) => {
   res.send("ok");
@@ -261,12 +276,14 @@ wss.on("connection", (socket) => {
             isWin: !!(u.isWin || (winner && typeof u.groupId === "string" && String(u.groupId).trim().toLowerCase() === w))
           })).filter((x) => x.openId);
           ranked.sort((a, b) => b.score - a.score);
+          const cur_in_mysql = selectUserCoreStats(oid);
           const withRank = ranked.map((x, idx) => ({
             openId: x.openId,
             roundResult: x.isWin === true ? 1 : (x.isWin === false ? 2 : 0),
             score: x.score,
             rank: idx + 1,
-            winningStreakCount: (USER_CORE_STATS.get(x.openId) && USER_CORE_STATS.get(x.openId).streak) || 0,
+            // winningStreakCount: (USER_CORE_STATS.get(x.openId) && USER_CORE_STATS.get(x.openId).streak) || 0,
+            winningStreakCount: (cur_in_mysql && cur_in_mysql.length > 0 ? cur_in_mysql[0].streak : 0) || 0,
             winningPoints: ""
           }));
           if (withRank.length > 0) {
@@ -776,6 +793,34 @@ async function callSdkWithToken({ client, lower, upper, alt, buildReq, logCtx })
 // Global user core stats: points and win-streak per openId
 // 全局用户核心数据：按 openId 存储积分与连胜
 const USER_CORE_STATS = new Map();
+function selectUserCoreStats(openId) {
+  try {
+    // 获取连接 + 执行查询（一步到位）
+    const [rows, fields] = pool.execute(
+      'SELECT * FROM user_core_stats WHERE openId = ? ORDER BY points DESC', // SQL 语句
+      [String(openId || "")] // 占位符参数（无则传空数组）
+    );
+    console.log('查询UserCoreStats数据:', rows);
+    return rows;
+  } catch (err) {
+    console.error('查询异常：', err);
+    return null;
+  }
+}
+function updateUserCoreStats(openId, points, streak) {
+  try {
+    // 获取连接 + 执行查询（一步到位）
+    const [rows, fields] = pool.execute(
+      'INSERT INTO user_core_stats (openId, points, streak) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE points = ?, streak = ?', // SQL 语句
+      [String(openId || ""), points, streak, points, streak] // 占位符参数（无则传空数组）
+    );
+    console.log('更新UserCoreStats数据:', rows);
+    return rows;
+  } catch (err) {
+    console.error('更新异常：', err);
+    return null;
+  }
+}
 
 // Update user's points and streak based on match result
 // 根据胜负更新用户积分与连胜
@@ -783,7 +828,10 @@ function updateUserStats(openId, addPoints, isWin) {
   const oid = String(openId || "");
   if (!oid) return { err_no: 40001, err_msg: "invalid openId", data: null };
   const inc = Number(addPoints || 0);
-  const cur = USER_CORE_STATS.get(oid) || { points: 0, streak: 0 };
+  // const cur = USER_CORE_STATS.get(oid) || { points: 0, streak: 0 };
+  const cur_in_mysql = selectUserCoreStats(oid);
+  const cur = cur_in_mysql && cur_in_mysql.length > 0 ? cur_in_mysql[0] : { points: 0, streak: 0 };
+
   let points = Number(cur.points || 0);
   let streak = Number(cur.streak || 0);
   if (isWin) {
@@ -793,7 +841,8 @@ function updateUserStats(openId, addPoints, isWin) {
     const reduce = Math.max(1, Math.floor(streak * 0.2));
     streak = Math.max(0, streak - reduce);
   }
-  const next = { points, streak };
-  USER_CORE_STATS.set(oid, next);
+  // const next = { points, streak };
+  // USER_CORE_STATS.set(oid, next);
+  updateUserCoreStats(oid, points, streak);
   return { err_no: 0, err_msg: "ok", data: next };
 }
