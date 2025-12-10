@@ -265,7 +265,7 @@ wss.on("connection", (socket) => {
           const oid = String(u.openId || u.userOpenId || "");
           const pts = Number(u.addPoints || u.points || 0);
           const isWin = u.isWin === true ? true : (u.isWin === false ? false : null);
-          if (oid) updateUserStats(oid, pts, isWin);
+          if (oid) await updateUserStats(oid, pts, isWin);
         }
 
         // Build per-user round result payload and upload to Douyin ranking
@@ -277,7 +277,7 @@ wss.on("connection", (socket) => {
             isWin: !!(u.isWin || (winner && typeof u.groupId === "string" && String(u.groupId).trim().toLowerCase() === w))
           })).filter((x) => x.openId);
           ranked.sort((a, b) => b.score - a.score);
-          const cur_in_mysql = selectUserCoreStats(oid);
+          const cur_in_mysql = await selectUserCoreStats(oid);
           const withRank = ranked.map((x, idx) => ({
             openId: x.openId,
             roundResult: x.isWin === true ? 1 : (x.isWin === false ? 2 : 0),
@@ -794,10 +794,10 @@ async function callSdkWithToken({ client, lower, upper, alt, buildReq, logCtx })
 // Global user core stats: points and win-streak per openId
 // 全局用户核心数据：按 openId 存储积分与连胜
 const USER_CORE_STATS = new Map();
-function selectUserCoreStats(openId) {
+async function selectUserCoreStats(openId) {
   try {
     // 获取连接 + 执行查询（一步到位）
-    const [rows, fields] = pool.execute(
+    const [rows, fields] = await pool.execute(
       'SELECT * FROM user_core_stats WHERE openId = ? ORDER BY points DESC', // SQL 语句
       [String(openId || "")] // 占位符参数（无则传空数组）
     );
@@ -808,10 +808,10 @@ function selectUserCoreStats(openId) {
     return null;
   }
 }
-function updateUserCoreStats(openId, points, streak) {
+async function updateUserCoreStats(openId, points, streak) {
   try {
     // 获取连接 + 执行查询（一步到位）
-    const [rows, fields] = pool.execute(
+    const [rows, fields] = await pool.execute(
       'INSERT INTO user_core_stats (openId, points, streak) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE points = ?, streak = ?', // SQL 语句
       [String(openId || ""), points, streak, points, streak] // 占位符参数（无则传空数组）
     );
@@ -825,12 +825,12 @@ function updateUserCoreStats(openId, points, streak) {
 
 // Update user's points and streak based on match result
 // 根据胜负更新用户积分与连胜
-function updateUserStats(openId, addPoints, isWin) {
+async function updateUserStats(openId, addPoints, isWin) {
   const oid = String(openId || "");
   if (!oid) return { err_no: 40001, err_msg: "invalid openId", data: null };
   const inc = Number(addPoints || 0);
   // const cur = USER_CORE_STATS.get(oid) || { points: 0, streak: 0 };
-  const cur_in_mysql = selectUserCoreStats(oid);
+  const cur_in_mysql = await selectUserCoreStats(oid);
   const cur = cur_in_mysql && cur_in_mysql.length > 0 ? cur_in_mysql[0] : { points: 0, streak: 0 };
 
   let points = Number(cur.points || 0);
@@ -842,8 +842,8 @@ function updateUserStats(openId, addPoints, isWin) {
     const reduce = Math.max(1, Math.floor(streak * 0.2));
     streak = Math.max(0, streak - reduce);
   }
-  // const next = { points, streak };
+  const next = { points, streak };
   // USER_CORE_STATS.set(oid, next);
-  updateUserCoreStats(oid, points, streak);
+  await updateUserCoreStats(oid, points, streak);
   return { err_no: 0, err_msg: "ok", data: next };
 }
