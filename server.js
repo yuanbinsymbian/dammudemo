@@ -524,18 +524,15 @@ async function fetchAccessToken(force = false) {
 async function fetchLiveInfoByToken(token, overrideXToken) {
   const client = getOpenApiClient();
   if (!client || typeof client.webcastmateInfo !== "function") return { err_no: 40023, err_tips: "sdk_unavailable", data: null };
-  const buildReq = (xt) => {
-    const base = { token: String(token), xToken: xt };
-    return WebcastmateInfoRequest ? new WebcastmateInfoRequest(base) : base;
-  };
   try {
-    let sdkRes;
-    if (overrideXToken) {
-      sdkRes = await client.webcastmateInfo(buildReq(overrideXToken));
-      console.log("sdk_call_ok", { api: "webcastmateInfo", ts: Date.now() });
-    } else {
-      sdkRes = await callSdkWithToken({ client, lower: "webcastmateInfo", upper: "WebcastmateInfo", buildReq });
+    let xt = overrideXToken;
+    if (!xt) {
+      const at = await fetchAccessToken(true);
+      xt = at && at.access_token ? at.access_token : null;
+      if (!xt) return at || { err_no: 40020, err_tips: "access_token unavailable", data: null };
     }
+    const params = WebcastmateInfoRequest ? new WebcastmateInfoRequest({ token: String(token), xToken: xt }) : { token: String(token), xToken: xt };
+    const sdkRes = await client.webcastmateInfo(params);
     const body = sdkRes || {};
     try {
       const info = body && body.data && body.data.info;
