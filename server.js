@@ -10,7 +10,7 @@ const CredentialClient = require("@open-dy/open_api_credential");
 let OpenApiSdk;
 // Douyin OpenAPI SDK — business APIs (live info, task start, round status)
 // 抖音 OpenAPI SDK：包含直播信息、任务启动、对局状态同步等接口
-try { OpenApiSdk = require("@open-dy/open_api_sdk"); } catch (_) { OpenApiSdk = null; }
+try { OpenApiSdk = require("@open-dy/open_api_sdk"); } catch (e) { OpenApiSdk = null; console.log("sdk_require_error", { pkg: "@open-dy/open_api_sdk", err: String(e && e.message || e), ts: Date.now() }); }
 // SDK 客户端：用于调用开放平台业务接口
 const SdkClient = OpenApiSdk && (OpenApiSdk.default || OpenApiSdk) || null;
 const TaskStartRequest = OpenApiSdk && OpenApiSdk.TaskStartRequest || null;
@@ -484,12 +484,12 @@ let openApiClient = null;
 // 按需初始化 OpenAPI SDK 客户端（使用应用凭据）
 // 参考文档：https://developer.open-douyin.com/docs/resource/zh-CN/interaction/develop/server/sdk-overview
 function getOpenApiClient() {
-  if (!SdkClient) return null;
+  if (!SdkClient) { console.log("sdk_client_unavailable", { reason: "missing SdkClient export", ts: Date.now() }); return null; }
   if (openApiClient) return openApiClient;
   const appid = process.env.DOUYIN_APP_ID;
   const secret = process.env.DOUYIN_APP_SECRET;
-  if (!appid || !secret) return null;
-  try { openApiClient = new SdkClient({ clientKey: appid, clientSecret: secret }); } catch (_) { openApiClient = null; }
+  if (!appid || !secret) { console.log("sdk_client_env_missing", { appid: !!appid, secret: !!secret, ts: Date.now() }); return null; }
+  try { openApiClient = new SdkClient({ clientKey: appid, clientSecret: secret }); } catch (e) { openApiClient = null; console.log("sdk_client_init_error", { err: String(e && e.message || e), ts: Date.now() }); }
   return openApiClient;
 }
 
