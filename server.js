@@ -128,6 +128,7 @@ wss.on("connection", (socket) => {
         return;
       }
       (async () => {
+        console.log("ws_join_token_call", { tokenLen: tk.length, ts: Date.now() });
         const r = await fetchLiveInfoByToken(String(data.token));
         const info = r && r.data && r.data.info;
         if (info && (info.room_id_str || info.room_id !== undefined)) {
@@ -527,11 +528,16 @@ async function fetchAccessToken(force = false) {
   if (!appid || !secret) {
     return { err_no: 40020, err_tips: "missing appid or secret", data: null };
   }
-  if (!credentialClient) credentialClient = new CredentialClient({ clientKey: appid, clientSecret: secret });
+  if (!credentialClient) {
+    try { credentialClient = new CredentialClient({ clientKey: appid, clientSecret: secret }); console.log("cred_client_init_ok", { ts: Date.now() }); }
+    catch (e) { console.log("cred_client_init_error", { err: String(e && e.message || e), ts: Date.now() }); return { err_no: -1, err_tips: String(e && e.message || e), data: null }; }
+  }
   let tokenRes = null;
-  try { tokenRes = await credentialClient.getClientToken(); } catch (e) { tokenRes = { err_no: -1, err_tips: String(e && e.message || e) }; }
+  try { console.log("cred_get_token_start", { ts: Date.now() }); tokenRes = await credentialClient.getClientToken(); }
+  catch (e) { tokenRes = { err_no: -1, err_tips: String(e && e.message || e) }; console.log("cred_get_token_error", { err: String(e && e.message || e), ts: Date.now() }); }
   const accessToken = tokenRes && (tokenRes.accessToken || (tokenRes.data && tokenRes.data.access_token));
   const expiresIn = tokenRes && (tokenRes.expiresIn || (tokenRes.data && tokenRes.data.expires_in));
+  console.log("cred_get_token_result", { hasToken: !!accessToken, tokenLen: accessToken ? String(accessToken).length : 0, expiresIn: expiresIn || null, ts: Date.now() });
   if (!accessToken) return tokenRes || { err_no: 40020, err_tips: "access_token unavailable", data: null };
   ACCESS_TOKEN = accessToken;
   const ttl = (expiresIn || 7200) * 1000;
@@ -567,6 +573,7 @@ async function fetchLiveInfoByToken(token, overrideXToken) {
       xt = at && at.access_token ? at.access_token : null;
       if (!xt) return at || { err_no: 40020, err_tips: "access_token unavailable", data: null };
     }
+    console.log("webcastmateInfo_call", { hasXToken: !!xt, xTokenLen: xt ? String(xt).length : 0, ts: Date.now() });
     const params = WebcastmateInfoRequest ? new WebcastmateInfoRequest({ token: String(token), xToken: xt }) : { token: String(token), xToken: xt };
     const sdkRes = await client.webcastmateInfo(params);
     const body = sdkRes || {};
