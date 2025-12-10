@@ -58,10 +58,31 @@ app.get("/v1/ping", (req, res) => {
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server, path: "/ws" });
 
+function wsSend(socket, message) {
+  if (!socket || socket.readyState !== WebSocket.OPEN) return;
+  try { socket.send(typeof message === "string" ? message : JSON.stringify(message)); } catch (_) {}
+}
+
+async function wsBroadcast(message, roomId) {
+  const target = roomId !== undefined && roomId !== null ? String(roomId) : null;
+  try {
+    if (message && typeof message !== "string" && message.open_id) {
+      const cur = await selectUserCoreStats(String(message.open_id));
+      const scoreObj = cur && cur.length > 0 ? cur[0] : null;
+      message.score = scoreObj;
+    }
+  } catch (_) {}
+  wss.clients.forEach((client) => {
+    if (client.readyState === WebSocket.OPEN && (!target || client.roomId === target)) {
+      try { client.send(typeof message === "string" ? message : JSON.stringify(message)); } catch (_) {}
+    }
+  });
+}
+
 // Handle incoming WebSocket connection: heartbeat, join/leave, and gameplay events
 // 处理 WebSocket 连接：心跳、加入/离开、玩法事件
 wss.on("connection", (socket) => {
-  socket.send(JSON.stringify({ type: "welcome", ts: Date.now() }));
+  wsSend(socket, { type: "welcome", ts: Date.now() });
   socket.isAlive = true;
   let lastSeen = Date.now();
   socket.on("pong", () => { socket.isAlive = true; lastSeen = Date.now(); console.log("ws_pong", { roomId: socket.roomId || null, openId: socket.openId || null, ts: Date.now() }); });
@@ -104,14 +125,14 @@ wss.on("connection", (socket) => {
       socket.isAlive = true; lastSeen = Date.now();
       const pong = { type: "pong", ts: Date.now() };
       console.log("ws_downlink", { type: "pong", roomId: socket.roomId || null, ts: pong.ts });
-      socket.send(JSON.stringify(pong));
+      wsSend(socket, pong);
       return;
     }
     if (!data && text && text.trim().toLowerCase() === "ping") {
       socket.isAlive = true; lastSeen = Date.now();
       const pong = { type: "pong", ts: Date.now() };
       console.log("ws_downlink", { type: "pong", roomId: socket.roomId || null, ts: pong.ts });
-      socket.send(JSON.stringify(pong));
+      wsSend(socket, pong);
       return;
     }
 
@@ -124,7 +145,7 @@ wss.on("connection", (socket) => {
         socket.roomId = ridStr;
         if (data.openId) socket.openId = String(data.openId);
         console.log("ws_join", { roomId: ridStr, openId: socket.openId || null, via: "debug_token", ts: Date.now() });
-        socket.send(JSON.stringify({ type: "joined", roomId: socket.roomId, roomIdStr: ridStr }));
+        wsSend(socket, { type: "joined", roomId: socket.roomId, roomIdStr: ridStr });
         return;
       }
       (async () => {
@@ -138,9 +159,9 @@ wss.on("connection", (socket) => {
           else if (info.anchor_open_id) socket.openId = String(info.anchor_open_id);
           console.log("ws_join", { roomId: ridStr, openId: socket.openId || null, via: "token_liveinfo", ts: Date.now() });
           console.log("ws_downlink", { type: "joined", roomId: ridStr, ts: Date.now() });
-          socket.send(JSON.stringify({ type: "joined", roomId: socket.roomId, roomIdStr: ridStr }));
+          wsSend(socket, { type: "joined", roomId: socket.roomId, roomIdStr: ridStr });
         } else {
-          socket.send(JSON.stringify({ type: "join_failed", body: r }));
+          wsSend(socket, { type: "join_failed", body: r });
         }
       })();
       return;
@@ -152,25 +173,21 @@ wss.on("connection", (socket) => {
       if (data.openId) socket.openId = String(data.openId);
       console.log("ws_join", { roomId: socket.roomId, openId: socket.openId || null, via: "roomId", ts: Date.now() });
       console.log("ws_downlink", { type: "joined", roomId: String(socket.roomId), ts: Date.now() });
-      socket.send(JSON.stringify({ type: "joined", roomId: socket.roomId, roomIdStr: String(socket.roomId) }));
+      wsSend(socket, { type: "joined", roomId: socket.roomId, roomIdStr: String(socket.roomId) });
       return;
     }
     if (data && data.type === "leave") {
       console.log("ws_leave", { roomId: socket.roomId || null, openId: socket.openId || null, ts: Date.now() });
       delete socket.roomId;
       console.log("ws_downlink", { type: "left", roomId: socket.roomId || null, ts: Date.now() });
-      socket.send(JSON.stringify({ type: "left" }));
+      wsSend(socket, { type: "left" });
       return;
     }
     // Room chat relay (server-side broadcast to room members)
     // 房间聊天转发（服务端向房间成员广播）
     if (data && data.type === "say" && data.roomId && data.payload) {
       const target = String(data.roomId);
-      wss.clients.forEach((client) => {
-        if (client.readyState === WebSocket.OPEN && client.roomId === target) {
-          client.send(JSON.stringify({ type: "message", payload: data.payload }));
-        }
-      });
+      wsBroadcast({ type: "message", payload: data.payload }, target);
       return;
     }
     // Start live data push tasks for selected msg types via SDK
@@ -180,7 +197,7 @@ wss.on("connection", (socket) => {
         const roomId = String(data.roomId || socket.roomId || "");
         const appid = process.env.DOUYIN_APP_ID;
         if (!roomId || !appid) {
-          socket.send(JSON.stringify({ type: "startgame_failed", reason: !roomId ? "missing roomId" : "missing appid" }));
+          wsSend(socket, { type: "startgame_failed", reason: !roomId ? "missing roomId" : "missing appid" });
           return;
         }
         let msgTypes = data.msgTypes;
@@ -193,7 +210,7 @@ wss.on("connection", (socket) => {
           results.push({ msgType: String(mt), res });
         }
         console.log("ws_startgame", { roomId, msgTypes, ts: Date.now() });
-        socket.send(JSON.stringify({ type: "startgame_ok", roomId, results }));
+        wsSend(socket, { type: "startgame_ok", roomId, results });
       })();
       return;
     }
@@ -209,13 +226,13 @@ wss.on("connection", (socket) => {
         const appid = process.env.DOUYIN_APP_ID;
         const anchorOpenId = socket.openId ? String(socket.openId) : undefined;
         if (!roomId || !appid || !roundId || !startTime) {
-          socket.send(JSON.stringify({ type: "startRound_failed", reason: !roomId ? "missing roomId" : (!roundId ? "missing roundId" : (!startTime ? "missing startTime" : "missing appid")) }));
+          wsSend(socket, { type: "startRound_failed", reason: !roomId ? "missing roomId" : (!roundId ? "missing roundId" : (!startTime ? "missing startTime" : "missing appid")) });
           return;
         }
         const res = await roundSyncStatusStart({ appid, roomId, roundId, startTime, anchorOpenId });
         try { CURRENT_ROUND.set(String(roomId), Number(roundId)); } catch (_) {}
         console.log("ws_startRound", { roomId, roundId, startTime, ts: Date.now() });
-        socket.send(JSON.stringify({ type: "startRound_ok", roomId, roundId, body: res }));
+        wsSend(socket, { type: "startRound_ok", roomId, roundId, body: res });
       })();
       return;
     }
@@ -253,7 +270,7 @@ wss.on("connection", (socket) => {
         // Validate required fields
         // 校验必填参数
         if (!roomId || !appid || !roundId) {
-          socket.send(JSON.stringify({ type: "finishRound_failed", reason: !roomId ? "missing roomId" : (!roundId ? "missing roundId" : "missing appid") }));
+          wsSend(socket, { type: "finishRound_failed", reason: !roomId ? "missing roomId" : (!roundId ? "missing roundId" : "missing appid") });
           return;
         }
 
@@ -302,13 +319,11 @@ wss.on("connection", (socket) => {
         // 清理当前对局状态并返回结果
         try { CURRENT_ROUND.delete(String(roomId)); } catch (_) {}
         console.log("ws_finishRound", { roomId, roundId/*, winner: winner || null*/, ts: Date.now() });
-        socket.send(JSON.stringify({ type: "finishRound_ok", roomId, roundId, body: res }));
+        wsSend(socket, { type: "finishRound_ok", roomId, roundId, body: res });
       })();
       return;
     }
-    wss.clients.forEach((client) => {
-      if (client.readyState === WebSocket.OPEN) client.send(text);
-    });
+  wsBroadcast(text);
   });
 });
 
@@ -404,17 +419,20 @@ app.post("/live_data_callback", async (req, res) => {
         }
       }
     } catch (_) {}
-    const payload = { type: "live_data", msgType: headerMsgType, data: body };
+    const ridStr = roomId ? String(roomId) : null;
+    let roundIdForPayload = 0;
+    if (ridStr) roundIdForPayload = (CURRENT_ROUND && CURRENT_ROUND.get(ridStr)) ? Number(CURRENT_ROUND.get(ridStr)) : 0;
+    const arr = Array.isArray(body) ? body : (Array.isArray(body.data) ? body.data : null);
+    const item = arr && arr[0] ? arr[0] : null;
+    const openIdPayload = item && (item.sec_openid || item.open_id) ? String(item.sec_openid || item.open_id) : null;
+    const appidForPayload = process.env.DOUYIN_APP_ID || "";
+    const gidRes = getUserGroupId(appidForPayload, openIdPayload || "", ridStr || "", roundIdForPayload || 0);
+    const groupIdPayload = gidRes && gidRes.group_id ? gidRes.group_id : null;
+    const payload = { type: "live_data", room_id: ridStr, round_id: roundIdForPayload, group_id: groupIdPayload, open_id: openIdPayload || null, msg_type: headerMsgType || null, msg_id: item && item.msg_id || null, nickname: item && item.nickname || null, avatar_url: item && item.avatar_url || null, message_ts: item && item.timestamp || null, data: body, ts: Date.now() };
     if (roomId) {
-      wss.clients.forEach((client) => {
-        if (client.readyState === WebSocket.OPEN && client.roomId === roomId) {
-          client.send(JSON.stringify(payload));
-        }
-      });
+      wsBroadcast(payload, roomId);
     } else {
-      wss.clients.forEach((client) => {
-        if (client.readyState === WebSocket.OPEN) client.send(JSON.stringify(payload));
-      });
+      wsBroadcast(payload);
     }
     return res.status(200).json({ err_no: 0, err_msg: "success", data: "" });
   } catch (e) {
@@ -464,12 +482,8 @@ app.post("/api/user_group/push", async (req, res) => {
     const status = roundId ? 1 : 2;
     console.log("user_group_push_out", { roomId, roundId, status, finalGroup, ts: Date.now() });
     try {
-      const msg = { type: "group_push", data: { room_id: roomId, round_id: roundId, group_id: finalGroup, open_id: openId }, ts: Date.now() };
-      wss.clients.forEach((client) => {
-        if (client.readyState === WebSocket.OPEN && (!roomId || client.roomId === roomId)) {
-          client.send(JSON.stringify(msg));
-        }
-      });
+      const msg = { type: "group_push", room_id: roomId, round_id: roundId, group_id: finalGroup, open_id: openId, data: req.body || {}, ts: Date.now() };
+      wsBroadcast(msg, roomId);
       console.log("ws_group_push_broadcast", { roomId, roundId, groupId: finalGroup, openId, ts: Date.now() });
     } catch (e) {
       console.log("ws_group_push_broadcast_error", { err: String(e && e.message || e), ts: Date.now() });
@@ -761,6 +775,20 @@ function recordUserGroup(appid, openId, roomId, roundId, groupId) {
   if (prev && prev !== gid) return { err_no: 40002, err_msg: "group conflict", data: { prev, requested: gid } };
   USER_ROUND_GROUP.set(key, gid);
   return { err_no: 0, err_msg: "ok", data: { group_id: gid } };
+}
+
+function getUserGroupId(appid, openId, roomId, roundId) {
+  const app = String(appid);
+  const oid = String(openId);
+  const rid = String(roomId);
+  let r = roundId !== undefined && roundId !== null ? Number(roundId) : 0;
+  if (!r) {
+    const cur = CURRENT_ROUND && CURRENT_ROUND.get(rid) ? Number(CURRENT_ROUND.get(rid)) : 0;
+    r = cur || findLatestRoundId(app, oid, rid);
+  }
+  const key = makeUserRoundKey(app, oid, rid, r);
+  const gid = USER_ROUND_GROUP.get(key) || "";
+  return { group_id: gid, round_id: r };
 }
 
 // Compute and verify signature for Douyin callbacks/queries
