@@ -480,26 +480,39 @@ app.post("/api/user_group/query", async (req, res) => {
     }
     const secret = process.env.DOUYIN_CALLBACK_SECRET || "";
     const rawBodyStr = JSON.stringify(req.body || {});
+    console.log("user_group_query_in", {
+      msgType: hMsgType || null,
+      headersRoomId: req.headers["x-roomid"] ? String(req.headers["x-roomid"]) : null,
+      hasBody: !!req.body,
+      bodyKeys: req.body ? Object.keys(req.body) : [],
+      ts: Date.now()
+    });
     if (!verifySignature(req, rawBodyStr, secret)) {
+      console.log("user_group_query_sig_error", { ts: Date.now() });
       return res.status(200).json({ errcode: 40004, errmsg: "invalid signature" });
     }
     const appid = req.body && req.body.app_id ? String(req.body.app_id) : "";
     const openId = req.body && req.body.open_id ? String(req.body.open_id) : "";
     const roomId = req.body && req.body.room_id ? String(req.body.room_id) : "";
     if (!appid || !openId || !roomId) {
+      console.log("user_group_query_invalid_params", { appidOk: !!appid, openIdOk: !!openId, roomIdOk: !!roomId, ts: Date.now() });
       return res.status(200).json({ errcode: 40001, errmsg: "invalid params" });
     }
+    console.log("user_group_query_parsed", { appid, openId, roomId, ts: Date.now() });
     let roundId = CURRENT_ROUND && CURRENT_ROUND.get(String(roomId)) ? Number(CURRENT_ROUND.get(String(roomId))) : 0;
     let roundStatus = roundId ? 1 : 2;
     if (!roundId) {
       const latest = findLatestRoundId(appid, openId, roomId);
       if (latest) { roundId = latest; roundStatus = 2; }
     }
+    console.log("user_group_query_round", { roundId, roundStatus, ts: Date.now() });
     const key = makeUserRoundKey(appid, openId, roomId, roundId);
     const gid = USER_ROUND_GROUP.get(key) || "";
     const userGroupStatus = gid ? 1 : 0;
+    console.log("user_group_query_gid", { key, gid, userGroupStatus, ts: Date.now() });
     return res.status(200).json({ errcode: 0, errmsg: "success", data: { round_id: roundId, round_status: roundStatus, user_group_status: userGroupStatus, group_id: gid } });
   } catch (e) {
+    console.log("user_group_query_error", { err: String(e && e.message || e), ts: Date.now() });
     return res.status(200).json({ errcode: 1, errmsg: "internal error" });
   }
 });
