@@ -429,7 +429,15 @@ app.post("/live_data_callback", async (req, res) => {
 app.post("/api/user_group/push", async (req, res) => {
   try {
     const hMsgType = req.headers["x-msg-type"] ? String(req.headers["x-msg-type"]) : null;
+    console.log("user_group_push_in", {
+      msgType: hMsgType || null,
+      headersRoomId: req.headers["x-roomid"] ? String(req.headers["x-roomid"]) : null,
+      hasBody: !!req.body,
+      bodyKeys: req.body ? Object.keys(req.body) : [],
+      ts: Date.now()
+    });
     if (hMsgType && hMsgType !== "user_group_push") {
+      console.log("user_group_push_invalid_msgtype", { msgType: hMsgType, ts: Date.now() });
       return res.status(200).json({ errcode: 40001, errmsg: "invalid msg type" });
     }
     const appid = req.body && req.body.app_id ? String(req.body.app_id) : "";
@@ -437,8 +445,10 @@ app.post("/api/user_group/push", async (req, res) => {
     const roomId = (req.body && req.body.room_id ? String(req.body.room_id) : (req.headers["x-roomid"] ? String(req.headers["x-roomid"]) : ""));
     const requestedGroup = req.body && req.body.group_id ? String(req.body.group_id) : "";
     if (!appid || !openId || !roomId || !requestedGroup) {
+      console.log("user_group_push_invalid_params", { appidOk: !!appid, openIdOk: !!openId, roomIdOk: !!roomId, groupOk: !!requestedGroup, ts: Date.now() });
       return res.status(200).json({ errcode: 40001, errmsg: "invalid params" });
     }
+    console.log("user_group_push_parsed", { appid, openId, roomId, requestedGroup, ts: Date.now() });
     const roundId = (CURRENT_ROUND && CURRENT_ROUND.get(String(roomId))) ? Number(CURRENT_ROUND.get(String(roomId))) : 0;
     const key = makeUserRoundKey(appid, openId, roomId, roundId);
     const prev = USER_ROUND_GROUP.get(key);
@@ -451,8 +461,10 @@ app.post("/api/user_group/push", async (req, res) => {
       console.log("user_group_set", { roomId, roundId, openId, groupId: finalGroup, ts: Date.now() });
     }
     const status = roundId ? 1 : 2;
+    console.log("user_group_push_out", { roomId, roundId, status, finalGroup, ts: Date.now() });
     return res.status(200).json({ errcode: 0, errmsg: "success", data: { round_id: roundId, round_status: status, group_id: finalGroup } });
   } catch (e) {
+    console.log("user_group_push_error", { err: String(e && e.message || e), ts: Date.now() });
     return res.status(200).json({ errcode: 1, errmsg: "internal error" });
   }
 });
