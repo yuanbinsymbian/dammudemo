@@ -59,7 +59,7 @@ def main():
     print('payload:', json.dumps({'groupResults':group_results,'users':users}, ensure_ascii=False))
     ok = False
     start = time.time()
-    while time.time() - start < 15:
+    while True:
         try:
             ws.settimeout(3)
             msg = ws.recv()
@@ -68,16 +68,12 @@ def main():
                 obj = json.loads(msg)
                 if obj.get('type') == 'finishRound_ok':
                     ok = True
-                    break
             except Exception:
                 pass
         except websocket.WebSocketTimeoutException:
             pass
-        time.sleep(1)
-    ws.close()
-    if not ok:
-        print('finishRound response not received')
-        sys.exit(2)
+        ws_send(ws, {'type':'ping'})
+        time.sleep(30)
 
 if __name__ == '__main__':
     main()
