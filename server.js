@@ -274,7 +274,8 @@ wss.on("connection", (socket) => {
           const ranked = [...users].map((u) => ({
             openId: String(u.openId || u.userOpenId || ""),
             score: Number(u.addPoints || u.points || 0),
-            isWin: !!(u.isWin || (winner && typeof u.groupId === "string" && String(u.groupId).trim().toLowerCase() === w))
+            // isWin: !!(u.isWin || (winner && typeof u.groupId === "string" && String(u.groupId).trim().toLowerCase() === w))
+            isWin: Number(u.isWin || 0)
           })).filter((x) => x.openId);
           ranked.sort((a, b) => b.score - a.score);
           const cur_in_mysql = await selectUserCoreStats(oid);
@@ -297,7 +298,7 @@ wss.on("connection", (socket) => {
         // Clear current round state and respond
         // 清理当前对局状态并返回结果
         try { CURRENT_ROUND.delete(String(roomId)); } catch (_) {}
-        console.log("ws_finishRound", { roomId, roundId, winner: winner || null, ts: Date.now() });
+        console.log("ws_finishRound", { roomId, roundId/*, winner: winner || null*/, ts: Date.now() });
         socket.send(JSON.stringify({ type: "finishRound_ok", roomId, roundId, body: res }));
       })();
       return;
