@@ -69,9 +69,19 @@ def main():
     domain = sys.argv[1]
     token = sys.argv[2]
     round_id = int(sys.argv[3])
-    user_count = int(sys.argv[4]) if len(sys.argv) >= 5 else 6
-    wait_secs = int(sys.argv[5]) if len(sys.argv) >= 6 else 120
-    post_wait_secs = int(sys.argv[6]) if len(sys.argv) >= 7 else 10
+    def to_int_or(default, val):
+        try:
+            if val is None:
+                return default
+            s = str(val).strip()
+            if s == '':
+                return default
+            return int(s)
+        except Exception:
+            return default
+    user_count = to_int_or(6, sys.argv[4] if len(sys.argv) >= 5 else None)
+    wait_secs = to_int_or(120, sys.argv[5] if len(sys.argv) >= 6 else None)
+    post_wait_secs = to_int_or(10, sys.argv[6] if len(sys.argv) >= 7 else None)
 
     ws = websocket.create_connection(f'wss://{domain}/ws')
     ws_send(ws, {'type':'join','token':token})
