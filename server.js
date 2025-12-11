@@ -221,13 +221,17 @@ wss.on("connection", (socket) => {
         const roomId = String(data.roomId || socket.roomId || "");
         const roundIdRaw = data.roundId !== undefined ? data.roundId : data.RoundId;
         const startTimeRaw = data.startTime !== undefined ? data.startTime : data.StartTime;
-        const roundId = Number(roundIdRaw);
+        let roundId = Number(roundIdRaw);
         const startTime = Number(startTimeRaw || Math.floor(Date.now() / 1000));
         const appid = process.env.DOUYIN_APP_ID;
         const anchorOpenId = socket.openId ? String(socket.openId) : undefined;
-        if (!roomId || !appid || !roundId || !startTime) {
-          wsSend(socket, { type: "startRound_failed", reason: !roomId ? "missing roomId" : (!roundId ? "missing roundId" : (!startTime ? "missing startTime" : "missing appid")) });
+        if (!roomId || !appid || !startTime) {
+          wsSend(socket, { type: "startRound_failed", reason: !roomId ? "missing roomId" : (!startTime ? "missing startTime" : "missing appid") });
           return;
+        }
+        if (!roundId || Number.isNaN(roundId) || roundId <= 0) {
+          const prev = CURRENT_ROUND.get(String(roomId)) || 0;
+          roundId = Number(prev) + 1 || 1;
         }
         const res = await roundSyncStatusStart({ appid, roomId, roundId, startTime, anchorOpenId });
         try { CURRENT_ROUND.set(String(roomId), Number(roundId)); } catch (_) {}
@@ -242,7 +246,7 @@ wss.on("connection", (socket) => {
       (async () => {
         const roomId = String(data.roomId || socket.roomId || "");
         const roundIdRaw = data.roundId !== undefined ? data.roundId : data.RoundId;
-        const roundId = Number(roundIdRaw || (CURRENT_ROUND.get(String(roomId)) || 0));
+        let roundId = Number(roundIdRaw || (CURRENT_ROUND.get(String(roomId)) || 0));
         const appid = process.env.DOUYIN_APP_ID;
         const anchorOpenId = socket.openId ? String(socket.openId) : undefined;
         const endTime = Math.floor(Date.now() / 1000);
@@ -269,9 +273,13 @@ wss.on("connection", (socket) => {
 
         // Validate required fields
         // 校验必填参数
-        if (!roomId || !appid || !roundId) {
-          wsSend(socket, { type: "finishRound_failed", reason: !roomId ? "missing roomId" : (!roundId ? "missing roundId" : "missing appid") });
+        if (!roomId || !appid) {
+          wsSend(socket, { type: "finishRound_failed", reason: !roomId ? "missing roomId" : "missing appid" });
           return;
+        }
+        if (!roundId || Number.isNaN(roundId) || roundId <= 0) {
+          const prev = CURRENT_ROUND.get(String(roomId)) || 0;
+          roundId = prev ? Number(prev) : 1;
         }
 
         // Report round end status to Douyin via SDK
