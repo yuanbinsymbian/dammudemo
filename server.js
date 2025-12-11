@@ -607,17 +607,31 @@ async function fetchAccessToken(force = false) {
   if (!appid || !secret) {
     return { err_no: 40020, err_tips: "missing appid or secret", data: null };
   }
-  if (!credentialClient) {
-    try { credentialClient = new CredentialClient({ clientKey: appid, clientSecret: secret }); console.log("cred_client_init_ok", { ts: Date.now() }); }
-    catch (e) { console.log("cred_client_init_error", { err: String(e && e.message || e), ts: Date.now() }); return { err_no: -1, err_tips: String(e && e.message || e), data: null }; }
+  const tokenUrl = 'https://developer.toutiao.com/api/apps/v2/token';
+  let httpTokenRes = null;
+  try {
+    console.log("http_get_token_start", { ts: Date.now(), url: tokenUrl });
+    const payload = { appid: String(appid), secret: String(secret), grant_type: 'client_credential' };
+    const resp = await fetch(tokenUrl, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) });
+    httpTokenRes = await resp.json();
+  } catch (e) {
+    httpTokenRes = { err_no: -1, err_tips: String(e && e.message || e) };
+    console.log("http_get_token_error", { err: String(e && e.message || e), ts: Date.now() });
   }
-  let tokenRes = null;
-  try { console.log("cred_get_token_start", { ts: Date.now() }); tokenRes = await credentialClient.getClientToken(); }
-  catch (e) { tokenRes = { err_no: -1, err_tips: String(e && e.message || e) }; console.log("cred_get_token_error", { err: String(e && e.message || e), ts: Date.now() }); }
-  const accessToken = tokenRes && (tokenRes.accessToken || (tokenRes.data && tokenRes.data.access_token));
-  const expiresIn = tokenRes && (tokenRes.expiresIn || (tokenRes.data && tokenRes.data.expires_in));
-  console.log("cred_get_token_result", { hasToken: !!accessToken, tokenLen: accessToken ? String(accessToken).length : 0, expiresIn: expiresIn || null, ts: Date.now() });
-  if (!accessToken) return tokenRes || { err_no: 40020, err_tips: "access_token unavailable", data: null };
+  const accessToken = httpTokenRes && httpTokenRes.data && httpTokenRes.data.access_token;
+  const expiresIn = httpTokenRes && httpTokenRes.data && httpTokenRes.data.expires_in;
+  const httpExpAt = expiresIn ? (Date.now() + Number(expiresIn) * 1000) : null;
+  const preview = (s) => (typeof s === 'string' && s.length > 16) ? (s.slice(0,8) + '...' + s.slice(-8)) : (s || '');
+  console.log('http_get_token_result', {
+    err_no: (httpTokenRes && httpTokenRes.err_no) || null,
+    err_tips: (httpTokenRes && httpTokenRes.err_tips) || null,
+    access_token_preview: preview(accessToken),
+    expires_in: expiresIn || null,
+    expires_at: httpExpAt || null,
+    expires_at_iso: httpExpAt ? new Date(httpExpAt).toISOString() : null,
+    ts: Date.now()
+  });
+  if (!accessToken) return httpTokenRes || { err_no: 40020, err_tips: "access_token unavailable", data: null };
   ACCESS_TOKEN = accessToken;
   const ttl = (expiresIn || 7200) * 1000;
   ACCESS_TOKEN_EXPIRES_AT = Date.now() + Math.max(ttl - 300_000, 60_000);
@@ -670,7 +684,7 @@ async function fetchLiveInfoByToken(token, overrideXToken) {
     const xtPreview = xtStr.length > 16 ? (xtStr.slice(0,8) + "..." + xtStr.slice(-8)) : xtStr;
     const xtFull = process.env.DEBUG_LOG_XTOKEN === '1';
     console.log("webcastmateInfo_call", { hasXToken: !!xt, xTokenLen: xtStr.length, xToken: xtFull ? xtStr : xtPreview, ts: Date.now() });
-    const params = WebcastmateInfoRequest ? new WebcastmateInfoRequest({ token: String(token), xToken: xt }) : { token: String(token), xToken: xt };
+    const params = WebcastmateInfoRequest ? new WebcastmateInfoRequest({ token: String(token), accessToken: xt }) : { token: String(token), accessToken: xt };
     const sdkRes = await client.webcastmateInfo(params);
     const body = sdkRes || {};
     try {
