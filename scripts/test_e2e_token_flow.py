@@ -86,7 +86,7 @@ def main():
     ws = websocket.create_connection(f'wss://{domain}/ws')
     ws_send(ws, {'type':'join','token':token})
 
-    ws_send(ws, {'type':'startgame', 'msgTypes': ['live_comment','live_gift','live_like']})
+    ws_send(ws, {'type':'startgame','roomId':'7582426197011745576', 'msgTypes': ['live_comment','live_gift','live_like']})
     print('sent startgame')
 
     current_round = round_id
