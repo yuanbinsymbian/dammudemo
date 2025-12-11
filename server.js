@@ -482,7 +482,8 @@ app.post("/api/user_group/push", async (req, res) => {
     const status = roundId ? 1 : 2;
     console.log("user_group_push_out", { roomId, roundId, status, finalGroup, ts: Date.now() });
     try {
-      const msg = { type: "group_push", room_id: roomId, round_id: roundId, group_id: finalGroup, open_id: openId, data: req.body || {}, ts: Date.now() };
+      //const msg = { type: "group_push", room_id: roomId, round_id: roundId, group_id: finalGroup, open_id: openId, data: req.body || {}, ts: Date.now() };
+      const msg = { type: "live_data", room_id: roomId, round_id: roundId, msg_type:"group_push", group_id: finalGroup, open_id: openId, data: req.body || {}, ts: Date.now() };
       wsBroadcast(msg, roomId);
       console.log("ws_group_push_broadcast", { roomId, roundId, groupId: finalGroup, openId, ts: Date.now() });
     } catch (e) {
