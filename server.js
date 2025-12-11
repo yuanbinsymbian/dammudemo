@@ -880,20 +880,35 @@ function getSdkMethod(client, lower, upper, alt) {
 
 async function callSdkWithToken({ client, lower, upper, alt, buildReq, logCtx }) {
   const { fn, api } = getSdkMethod(client, lower, upper, alt);
-  if (!fn) return { err_no: 40023, err_msg: "sdk_unavailable", data: null };
+  console.log("sdk_call_in", { lower, upper, alt, client_ok: !!client, api_selected: api || null, ts: Date.now() });
+  if (!fn) {
+    console.log("sdk_method_missing", { lower, upper, alt, ts: Date.now() });
+    return { err_no: 40023, err_msg: "sdk_unavailable", data: null };
+  }
   try {
     const at = await fetchAccessToken(false);
     const xToken = at && at.access_token ? at.access_token : null;
+    const xtStr = xToken ? String(xToken) : "";
+    const xtPreview = xtStr.length > 16 ? (xtStr.slice(0,8) + "..." + xtStr.slice(-8)) : xtStr;
+    const xtFull = process.env.DEBUG_LOG_XTOKEN === '1';
+    console.log("sdk_token", { api, hasToken: !!xToken, tokenLen: xtStr.length, token: xtFull ? xtStr : xtPreview, ts: Date.now() });
     if (!xToken) {
       const at2 = await fetchAccessToken(true);
       if (!at2 || !at2.access_token) return at2 || { err_no: 40020, err_msg: "access_token unavailable", data: null };
+      const xt2 = String(at2.access_token);
+      const xt2Preview = xt2.length > 16 ? (xt2.slice(0,8) + "..." + xt2.slice(-8)) : xt2;
+      console.log("sdk_token_refresh", { api, tokenLen: xt2.length, token: xtFull ? xt2 : xt2Preview, ts: Date.now() });
       const req = buildReq(at2.access_token);
+      try { console.log("sdk_request", { api, req, ts: Date.now() }); } catch (_) {}
       const sdkRes = await fn.call(client, req);
+      try { console.log("sdk_call_res", { api, body: sdkRes, ts: Date.now() }); } catch (_) {}
       console.log("sdk_call_ok", Object.assign({ api, ts: Date.now() }, logCtx || {}));
       return sdkRes;
     }
     const req = buildReq(xToken);
+    try { console.log("sdk_request", { api, req, ts: Date.now() }); } catch (_) {}
     const sdkRes = await fn.call(client, req);
+    try { console.log("sdk_call_res", { api, body: sdkRes, ts: Date.now() }); } catch (_) {}
     console.log("sdk_call_ok", Object.assign({ api, ts: Date.now() }, logCtx || {}));
     return sdkRes;
   } catch (e) {
