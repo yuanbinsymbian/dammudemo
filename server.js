@@ -161,7 +161,17 @@ wss.on("connection", (socket) => {
           console.log("ws_downlink", { type: "joined", roomId: ridStr, ts: Date.now() });
           wsSend(socket, { type: "joined", roomId: socket.roomId, roomIdStr: ridStr });
         } else {
-          wsSend(socket, { type: "join_failed", body: r });
+          const dbg = process.env.DEBUG_ROOM_ID || process.env.DEBUG_ROOMID || process.env.DEBUG_ROOM_ID_STR || null;
+          if (dbg) {
+            const ridStr = String(dbg);
+            socket.roomId = ridStr;
+            if (data.openId) socket.openId = String(data.openId);
+            console.log("ws_join", { roomId: ridStr, openId: socket.openId || null, via: "debug_room_env", ts: Date.now() });
+            console.log("ws_downlink", { type: "joined", roomId: ridStr, ts: Date.now() });
+            wsSend(socket, { type: "joined", roomId: socket.roomId, roomIdStr: ridStr });
+          } else {
+            wsSend(socket, { type: "join_failed", body: r });
+          }
         }
       })();
       return;
