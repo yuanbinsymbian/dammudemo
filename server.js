@@ -152,8 +152,8 @@ wss.on("connection", (socket) => {
         console.log("ws_join_token_call", { tokenLen: tk.length, ts: Date.now() });
         const r = await fetchLiveInfoByToken(String(data.token));
         const info = r && r.data && r.data.info;
-        if (info && (info.room_id_str || info.room_id !== undefined)) {
-          const ridStr = info.room_id_str || String(info.room_id);
+        if (info && (info.room_id_str || info.roomId !== undefined)) {
+          const ridStr = info.room_id_str || String(info.roomId);
           socket.roomId = ridStr;
           if (data.openId) socket.openId = String(data.openId);
           else if (info.anchor_open_id) socket.openId = String(info.anchor_open_id);
