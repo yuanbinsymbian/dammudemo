@@ -85,8 +85,34 @@ def main():
 
     ws = websocket.create_connection(f'wss://{domain}/ws')
     ws_send(ws, {'type':'join','token':token})
+    joined_room_id = None
+    t0 = time.time()
+    while time.time() - t0 < 15:
+        try:
+            ws.settimeout(3)
+            msg = ws.recv()
+            print(msg)
+            try:
+                obj = json.loads(msg)
+                if obj.get('type') == 'joined':
+                    joined_room_id = obj.get('roomId') or obj.get('roomIdStr') or obj.get('room_id') or obj.get('room_id_str')
+                    print('joined room:', joined_room_id)
+                    break
+                elif obj.get('type') == 'join_failed':
+                    print('join_failed:', json.dumps(obj, ensure_ascii=False))
+                    ws.close()
+                    sys.exit(3)
+            except Exception:
+                pass
+        except websocket.WebSocketTimeoutException:
+            pass
 
-    ws_send(ws, {'type':'startgame','roomId':'7582426197011745576', 'msgTypes': ['live_comment','live_gift','live_like']})
+    if not joined_room_id:
+        print('join not confirmed within timeout')
+        ws.close()
+        sys.exit(4)
+
+    ws_send(ws, {'type':'startgame', 'msgTypes': ['live_comment','live_gift','live_like'], 'roomId': joined_room_id})
     print('sent startgame')
 
     current_round = round_id
