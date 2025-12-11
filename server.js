@@ -433,7 +433,7 @@ app.post("/live_data_callback", async (req, res) => {
               }
               //下发一个事件，加入分组
               const msg = { type: "live_data", room_id: roomId, round_id: roundId, msg_type:"group_push", group_id: gid, open_id: openId, data: body, ts: Date.now() };
-              console.log("ws_broadcast", { message: msg, ts: Date.now() });
+              // console.log("ws_broadcast", { message: msg, ts: Date.now() });
               wsBroadcast(msg, roomId);
             }
           }
@@ -837,8 +837,8 @@ function recordUserGroup(appid, openId, roomId, roundId, groupId) {
   const gid = String(groupId);
   if (!gid) return { err_no: 40001, err_msg: "invalid group", data: null };
   const key = makeUserRoundKey(appid, openId, roomId, roundId);
-  const prev = USER_ROUND_GROUP.get(key);
-  if (prev && prev !== gid) return { err_no: 40002, err_msg: "group conflict", data: { prev, requested: gid } };
+  // const prev = USER_ROUND_GROUP.get(key);
+  // if (prev && prev !== gid) return { err_no: 40002, err_msg: "group conflict", data: { prev, requested: gid } };
   USER_ROUND_GROUP.set(key, gid);
   return { err_no: 0, err_msg: "ok", data: { group_id: gid } };
 }
