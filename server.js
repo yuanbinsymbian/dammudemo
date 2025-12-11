@@ -16,8 +16,6 @@ let OpenApiSdk;
 try { OpenApiSdk = require("@open-dy/open_api_sdk"); } catch (e) { OpenApiSdk = null; console.log("sdk_require_error", { pkg: "@open-dy/open_api_sdk", err: String(e && e.message || e), ts: Date.now() }); }
 // SDK 客户端：用于调用开放平台业务接口
 const SdkClient = OpenApiSdk && (OpenApiSdk.default || OpenApiSdk) || null;
-const TaskStartRequest = OpenApiSdk && OpenApiSdk.TaskStartRequest || null;
-const WebcastmateInfoRequest = OpenApiSdk && OpenApiSdk.WebcastmateInfoRequest || null;
 const RoundSyncStatusRequest = OpenApiSdk && OpenApiSdk.RoundSyncStatusRequest || null;
 const UploadUserGroupInfoRequest = OpenApiSdk && OpenApiSdk.UploadUserGroupInfoRequest || null;
 const RoundUploadUserResultRequest = OpenApiSdk && OpenApiSdk.RoundUploadUserResultRequest || null;
@@ -408,6 +406,8 @@ app.post("/live_data_callback", async (req, res) => {
       if (appid && roomId && headerMsgType === "live_comment") {
         const ridStr = String(roomId);
         const roundId = CURRENT_ROUND && CURRENT_ROUND.get(ridStr);
+        console.log("current_round_dump", { size: CURRENT_ROUND ? CURRENT_ROUND.size : 0, entries: Array.from(CURRENT_ROUND.entries()), ts: Date.now() });
+        console.log("live_data_round_cursor", { roomId: ridStr, roundId, ts: Date.now() });
         if (roundId) {
           let openId = null;
           try {
@@ -423,6 +423,7 @@ app.post("/live_data_callback", async (req, res) => {
             if (content !== null && content !== undefined) content = String(content);
           } catch (_) {}
           const gid = groupIdFromMessage(content);
+          console.log("live_comment_gid_parse", { roomId: ridStr, roundId, openId, content, gid, ts: Date.now() });
           if (openId && gid) {
             const r = recordUserGroup(appid, openId, ridStr, roundId, gid);
             if (r && r.err_no !== 0) {
@@ -698,14 +699,26 @@ async function fetchLiveInfoByToken(token, overrideXToken) {
 // 仅使用 SDK 启动直播数据任务；严格调用 taskStart 方法
 // 参考文档：https://developer.open-douyin.com/docs/resource/zh-CN/interaction/develop/server/live-room-scope/data-open/start-task
 async function startLiveDataTask(appid, roomid, msgType) {
-  const client = getOpenApiClient();
-  if (!client || typeof client.taskStart !== "function") return { err_no: 40023, err_msg: "sdk_unavailable", data: null };
-  const buildReq = (tok) => {
-    const base = { accessToken: tok, appid: String(appid), msg_type: String(msgType), roomid: String(roomid) };
-    return TaskStartRequest ? new TaskStartRequest(base) : base;
-  };
-  const res = await callSdkWithToken({ client, lower: "taskStart", upper: "TaskStart", buildReq });
-  return res;
+  try {
+    const at = await fetchAccessToken(false);
+    let xToken = at && at.access_token ? at.access_token : null;
+    if (!xToken) {
+      const at2 = await fetchAccessToken(true);
+      if (!at2 || !at2.access_token) return at2 || { err_no: 40020, err_msg: "access_token unavailable", data: null };
+      xToken = at2.access_token;
+    }
+    const url = 'https://webcast.bytedance.com/api/live_data/task/get';
+    const qs = new URLSearchParams({ appid: String(appid), msg_type: String(msgType), roomid: String(roomid) }).toString();
+    const headers = { 'content-type': 'application/json', 'access-token': String(xToken) };
+    console.log('http_task_get_call', { url, appid: String(appid), roomid: String(roomid), msgType: String(msgType), ts: Date.now() });
+    const resp = await fetch(`${url}?${qs}`, { method: 'GET', headers });
+    const body = await resp.json();
+    console.log('http_task_get_res', { body, ts: Date.now() });
+    return body;
+  } catch (e) {
+    console.log('http_task_get_error', { err: String(e && e.message || e), ts: Date.now() });
+    return { err_no: -1, err_msg: String(e && e.message || e), data: null };
+  }
 }
 
 // SDK-only round status sync (start): status=1, optional anchorOpenId, inject xToken
