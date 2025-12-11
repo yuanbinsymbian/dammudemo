@@ -74,7 +74,7 @@ async function wsBroadcast(message, roomId) {
   } catch (_) {}
   wss.clients.forEach((client) => {
     if (client.readyState === WebSocket.OPEN && (!target || client.roomId === target)) {
-      console.log("ws_broadcast", {client: client, message: message, ts: Date.now() });
+      console.log("ws_broadcast", {client: client.roomId, message: JSON.stringify(message), ts: Date.now() });
       try { client.send(typeof message === "string" ? message : JSON.stringify(message)); } catch (_) {}
     }
   });
