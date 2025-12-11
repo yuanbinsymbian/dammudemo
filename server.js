@@ -665,6 +665,7 @@ async function fetchLiveInfoByToken(token, overrideXToken) {
     const body = sdkRes || {};
     try {
       const info = body && body.data && body.data.info;
+      console.log("webcastmateInfo_body", { body, ts: Date.now() });
       const txt = JSON.stringify(body);
       const m = txt && txt.match(/"room_id"\s*:\s*"?(\d+)"?/);
       if (info) {
@@ -675,6 +676,7 @@ async function fetchLiveInfoByToken(token, overrideXToken) {
     try { console.log("webcastmateInfo_res", { body, ts: Date.now() }); } catch (_) {}
     return body;
   } catch (e) {
+    console.log("webcastmateInfo_error", { err_tips: String(e && e.message || e), ts: Date.now() });
     return { err_no: -1, err_tips: String(e && e.message || e), data: null };
   }
 }
