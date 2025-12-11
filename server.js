@@ -581,6 +581,15 @@ function getOpenApiClient() {
 async function fetchAccessToken(force = false) {
   const now = Date.now();
   if (!force && ACCESS_TOKEN && ACCESS_TOKEN_EXPIRES_AT - now > 60_000) {
+    try {
+      console.log("access_token_cache_hit", {
+        tokenLen: ACCESS_TOKEN ? String(ACCESS_TOKEN).length : 0,
+        expires_at: ACCESS_TOKEN_EXPIRES_AT,
+        expires_at_iso: new Date(ACCESS_TOKEN_EXPIRES_AT).toISOString(),
+        ms_left: ACCESS_TOKEN_EXPIRES_AT - now,
+        ts: Date.now()
+      });
+    } catch (_) {}
     return { access_token: ACCESS_TOKEN, expires_at: ACCESS_TOKEN_EXPIRES_AT };
   }
   const appid = process.env.DOUYIN_APP_ID;
@@ -602,6 +611,20 @@ async function fetchAccessToken(force = false) {
   ACCESS_TOKEN = accessToken;
   const ttl = (expiresIn || 7200) * 1000;
   ACCESS_TOKEN_EXPIRES_AT = Date.now() + Math.max(ttl - 300_000, 60_000);
+  try {
+    const realExp = Date.now() + ttl;
+    const s = String(ACCESS_TOKEN || "");
+    const preview = s.length > 16 ? (s.slice(0, 8) + "..." + s.slice(-8)) : s;
+    console.log("access_token_set", {
+      tokenPreview: preview,
+      expires_in: expiresIn || 7200,
+      real_expires_at: realExp,
+      real_expires_at_iso: new Date(realExp).toISOString(),
+      virtual_expires_at: ACCESS_TOKEN_EXPIRES_AT,
+      virtual_expires_at_iso: new Date(ACCESS_TOKEN_EXPIRES_AT).toISOString(),
+      ts: Date.now()
+    });
+  } catch (_) {}
   return { access_token: ACCESS_TOKEN, expires_at: ACCESS_TOKEN_EXPIRES_AT };
 }
 
