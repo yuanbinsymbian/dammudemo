@@ -409,19 +409,10 @@ app.post("/live_data_callback", async (req, res) => {
         console.log("current_round_dump", { size: CURRENT_ROUND ? CURRENT_ROUND.size : 0, entries: Array.from(CURRENT_ROUND.entries()), ts: Date.now() });
         console.log("live_data_round_cursor", { roomId: ridStr, roundId, ts: Date.now() });
         if (roundId) {
-          let openId = null;
-          try {
-            openId = (body && body.user_open_id) || (body && body.open_id) || (body && body.user && body.user.open_id) ||
-              (body && body.data && body.data.user_open_id) || (body && body.data && body.data.user && body.data.user.open_id) || null;
-            if (openId) openId = String(openId);
-          } catch (_) {}
-          let content = null;
-          try {
-            content = (body && body.content) || (body && body.text) || (body && body.msg_content) ||
-              (body && body.data && body.data.content) || (body && body.data && body.data.text) ||
-              (body && body.comment && body.comment.text) || null;
-            if (content !== null && content !== undefined) content = String(content);
-          } catch (_) {}
+          const arr = Array.isArray(body) ? body : (Array.isArray(body.data) ? body.data : null);
+          const item = arr && arr[0] ? arr[0] : null;
+          const openId = item && item.sec_openid ? String(item.sec_openid) : null;
+          const content = item && item.content !== undefined ? String(item.content) : null;
           const gid = groupIdFromMessage(content);
           console.log("live_comment_gid_parse", { roomId: ridStr, roundId, openId, content, gid, ts: Date.now() });
           if (openId && gid) {
