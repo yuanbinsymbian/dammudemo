@@ -837,8 +837,8 @@ function recordUserGroup(appid, openId, roomId, roundId, groupId) {
   const gid = String(groupId);
   if (!gid) return { err_no: 40001, err_msg: "invalid group", data: null };
   const key = makeUserRoundKey(appid, openId, roomId, roundId);
-  // const prev = USER_ROUND_GROUP.get(key);
-  // if (prev && prev !== gid) return { err_no: 40002, err_msg: "group conflict", data: { prev, requested: gid } };
+  const prev = USER_ROUND_GROUP.get(key);
+  if (prev && prev !== gid) return { err_no: 40002, err_msg: "group conflict", data: { prev, requested: gid } };
   USER_ROUND_GROUP.set(key, gid);
   return { err_no: 0, err_msg: "ok", data: { group_id: gid } };
 }
