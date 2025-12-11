@@ -74,6 +74,7 @@ async function wsBroadcast(message, roomId) {
   } catch (_) {}
   wss.clients.forEach((client) => {
     if (client.readyState === WebSocket.OPEN && (!target || client.roomId === target)) {
+      console.log("ws_broadcast", {client: client, message: message, ts: Date.now() });
       try { client.send(typeof message === "string" ? message : JSON.stringify(message)); } catch (_) {}
     }
   });
@@ -432,6 +433,7 @@ app.post("/live_data_callback", async (req, res) => {
               }
               //下发一个事件，加入分组
               const msg = { type: "live_data", room_id: roomId, round_id: roundId, msg_type:"group_push", group_id: gid, open_id: openId, data: body, ts: Date.now() };
+              console.log("ws_broadcast", { message: msg, ts: Date.now() });
               wsBroadcast(msg, roomId);
             }
           }
