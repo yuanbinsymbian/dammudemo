@@ -656,23 +656,6 @@ async function fetchAccessToken(force = false) {
 // 仅使用 SDK（WebcastmateInfoRequest）获取直播信息；支持覆盖 xToken 与基于 token 的加入流程
 // 参考文档：https://developer.open-douyin.com/docs/resource/zh-CN/interaction/develop/server/live-room-scope/live-info
 async function fetchLiveInfoByToken(token, overrideXToken) {
-  const client = getOpenApiClient();
-  if (!client) {
-    console.log("sdk_client_missing", { api: "webcastmateInfo", ts: Date.now() });
-    return { err_no: 40023, err_tips: "sdk_unavailable", data: null };
-  }
-  if (typeof client.webcastmateInfo !== "function") {
-    let methods = [];
-    try {
-      const own = Object.keys(client);
-      const proto = Object.getOwnPropertyNames(Object.getPrototypeOf(client));
-      methods = Array.from(new Set([...(own || []), ...(proto || [])])).filter((k) => typeof client[k] === "function").sort();
-    } catch (e) {
-      methods = [];
-    }
-    console.log("sdk_method_missing", { api: "webcastmateInfo", methods, ts: Date.now() });
-    return { err_no: 40023, err_tips: "sdk_unavailable", data: null };
-  }
   try {
     let xt = overrideXToken;
     if (!xt) {
@@ -680,27 +663,33 @@ async function fetchLiveInfoByToken(token, overrideXToken) {
       xt = at && at.access_token ? at.access_token : null;
       if (!xt) return at || { err_no: 40020, err_tips: "access_token unavailable", data: null };
     }
-    const xtStr = xt ? String(xt) : "";
-    const xtPreview = xtStr.length > 16 ? (xtStr.slice(0,8) + "..." + xtStr.slice(-8)) : xtStr;
-    const xtFull = process.env.DEBUG_LOG_XTOKEN === '1';
-    console.log("webcastmateInfo_call", { hasXToken: !!xt, xTokenLen: xtStr.length, xToken: xtFull ? xtStr : xtPreview, ts: Date.now() });
-    const params = WebcastmateInfoRequest ? new WebcastmateInfoRequest({ token: String(token), accessToken: xt }) : { token: String(token), accessToken: xt };
-    const sdkRes = await client.webcastmateInfo(params);
-    const body = sdkRes || {};
+    const url = 'https://webcast.bytedance.com/api/webcastmate/info';
+    const payload = { token: String(token) };
+    const headers = { 'content-type': 'application/json', 'x-token': String(xt) };
+    console.log("http_webcastmateInfo_call", { url, hasXToken: !!xt, xTokenLen: String(xt).length, ts: Date.now() });
+    const resp = await fetch(url, { method: 'POST', headers, body: JSON.stringify(payload) });
+    const raw = await resp.text();
+    let body;
+    try { body = JSON.parse(raw); } catch (_) { body = { err_no: -1, err_tips: "invalid json", raw }; }
     try {
       const info = body && body.data && body.data.info;
-      console.log("webcastmateInfo_body", { body, ts: Date.now() });
-      const txt = JSON.stringify(body);
-      const m = txt && txt.match(/"room_id"\s*:\s*"?(\d+)"?/);
+      const m = raw && raw.match(/"room_id"\s*:\s*"?(\d+)"?/);
       if (info) {
-        if (m) { info.room_id_str = m[1]; info.room_id = m[1]; }
-        else if (info.room_id !== undefined && info.room_id !== null) { const asStr = typeof info.room_id === "string" ? info.room_id : String(info.room_id); info.room_id_str = asStr; info.room_id = asStr; }
+        if (m) { info.room_id_str = m[1]; info.roomId = m[1]; }
+        else if (info.roomId !== undefined && info.roomId !== null) { const asStr = typeof info.roomId === "string" ? info.roomId : String(info.roomId); info.room_id_str = asStr; info.roomId = asStr; }
+        else if (info.room_id !== undefined && info.room_id !== null) { const asStr = typeof info.room_id === "string" ? info.room_id : String(info.room_id); info.room_id_str = asStr; info.roomId = asStr; }
       }
     } catch (_) {}
-    try { console.log("webcastmateInfo_res", { body, ts: Date.now() }); } catch (_) {}
+    console.log("http_webcastmateInfo_res", { body, ts: Date.now() });
     return body;
   } catch (e) {
-    console.log("webcastmateInfo_error", { err_tips: String(e && e.message || e), ts: Date.now() });
+    const dbg = process.env.DEBUG_ROOM_ID || process.env.DEBUG_ROOMID || process.env.DEBUG_ROOM_ID_STR || null;
+    if (dbg) {
+      const ridStr = String(dbg);
+      console.log("http_webcastmateInfo_error", { err_tips: String(e && e.message || e), fallback_room_id: ridStr, ts: Date.now() });
+      return { errcode: 0, errmsg: "debug_room", data: { info: { room_id_str: ridStr, room_id: ridStr } } };
+    }
+    console.log("http_webcastmateInfo_error", { err_tips: String(e && e.message || e), ts: Date.now() });
     return { err_no: -1, err_tips: String(e && e.message || e), data: null };
   }
 }
@@ -712,7 +701,7 @@ async function startLiveDataTask(appid, roomid, msgType) {
   const client = getOpenApiClient();
   if (!client || typeof client.taskStart !== "function") return { err_no: 40023, err_msg: "sdk_unavailable", data: null };
   const buildReq = (tok) => {
-    const base = { accessToken: tok, appid: String(appid), msgType: String(msgType), roomid: String(roomid) };
+    const base = { accessToken: tok, appid: String(appid), msg_type: String(msgType), roomid: String(roomid) };
     return TaskStartRequest ? new TaskStartRequest(base) : base;
   };
   const res = await callSdkWithToken({ client, lower: "taskStart", upper: "TaskStart", buildReq });
