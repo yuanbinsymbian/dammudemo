@@ -47,6 +47,8 @@ const pool = mysql.createPool({
   queueLimit: 0             // 等待队列无限制
 });
 
+const DEBUG_ROOMID = process.env.DEBUG_ROOM_ID || process.env.DEBUG_ROOMID || process.env.DEBUG_ROOM_ID_STR || "1123456789999999999";
+
 app.get("/v1/ping", (req, res) => {
   res.send("ok");
 });
@@ -421,10 +423,13 @@ app.post("/live_data_callback", async (req, res) => {
               console.log("group_record_error", { roomId: ridStr, roundId, openId, gid, body: r, ts: Date.now() });
             } else {
               console.log("group_record_ok", { roomId: ridStr, roundId, openId, gid, ts: Date.now() });
-              const up = await uploadUserGroupInfo({ appid, openId, roomId: ridStr, roundId, groupId: gid });
-              if (up && (up.errcode === 0 || up.err_no === 0)) console.log("group_upload_ok", { roomId: ridStr, roundId, openId, gid, ts: Date.now() });
-              else console.log("group_upload_error", { roomId: ridStr, roundId, openId, gid, body: up, ts: Date.now() });
-
+              if (ridStr !== DEBUG_ROOMID){
+                const up = await uploadUserGroupInfo({ appid, openId, roomId: ridStr, roundId, groupId: gid });
+                if (up && (up.errcode === 0 || up.err_no === 0)) console.log("group_upload_ok", { roomId: ridStr, roundId, openId, gid, ts: Date.now() });
+                else console.log("group_upload_error", { roomId: ridStr, roundId, openId, gid, body: up, ts: Date.now() });
+              }else{
+                console.log("group_upload_skip", { roomId: ridStr, roundId, openId, gid, ts: Date.now() });
+              }
               //下发一个事件，加入分组
               const msg = { type: "live_data", room_id: roomId, round_id: roundId, msg_type:"group_push", group_id: gid, open_id: openId, data: body, ts: Date.now() };
               wsBroadcast(msg, roomId);
