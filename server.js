@@ -656,7 +656,10 @@ async function fetchLiveInfoByToken(token, overrideXToken) {
       xt = at && at.access_token ? at.access_token : null;
       if (!xt) return at || { err_no: 40020, err_tips: "access_token unavailable", data: null };
     }
-    console.log("webcastmateInfo_call", { hasXToken: !!xt, xTokenLen: xt ? String(xt).length : 0, ts: Date.now() });
+    const xtStr = xt ? String(xt) : "";
+    const xtPreview = xtStr.length > 16 ? (xtStr.slice(0,8) + "..." + xtStr.slice(-8)) : xtStr;
+    const xtFull = process.env.DEBUG_LOG_XTOKEN === '1';
+    console.log("webcastmateInfo_call", { hasXToken: !!xt, xTokenLen: xtStr.length, xToken: xtFull ? xtStr : xtPreview, ts: Date.now() });
     const params = WebcastmateInfoRequest ? new WebcastmateInfoRequest({ token: String(token), xToken: xt }) : { token: String(token), xToken: xt };
     const sdkRes = await client.webcastmateInfo(params);
     const body = sdkRes || {};
@@ -669,6 +672,7 @@ async function fetchLiveInfoByToken(token, overrideXToken) {
         else if (info.room_id !== undefined && info.room_id !== null) { const asStr = typeof info.room_id === "string" ? info.room_id : String(info.room_id); info.room_id_str = asStr; info.room_id = asStr; }
       }
     } catch (_) {}
+    try { console.log("webcastmateInfo_res", { body, ts: Date.now() }); } catch (_) {}
     return body;
   } catch (e) {
     return { err_no: -1, err_tips: String(e && e.message || e), data: null };
