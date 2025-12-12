@@ -756,13 +756,30 @@ async function roundSyncStatusStart({ appid, roomId, roundId, startTime, anchorO
 // 对局结束状态同步
 // 参考文档：https://developer.open-douyin.com/docs/resource/zh-CN/interaction/develop/server/live-room-scope/user-team-select/sync-game-state
 async function roundSyncStatusEnd({ appid, roomId, roundId, endTime, groupResultList, anchorOpenId }) {
-  const client = getOpenApiClient();
-  const buildReq = (xt) => {
-    const base = { appId: String(appid), roomId: String(roomId), roundId: Number(roundId), endTime: Number(endTime), status: 2, xToken: xt, groupResultList: Array.isArray(groupResultList) ? groupResultList : [] };
-    if (anchorOpenId) base.anchorOpenId = String(anchorOpenId);
-    return RoundSyncStatusRequest ? new RoundSyncStatusRequest(base) : base;
-  };
-  return await callSdkWithToken({ client, lower: "roundSyncStatus", upper: "RoundSyncStatus", alt: "gamingConRoundSyncStatus", buildReq });
+  try {
+    const at = await fetchAccessToken(false);
+    let xToken = at && at.access_token ? at.access_token : null;
+    if (!xToken) {
+      const at2 = await fetchAccessToken(true);
+      if (!at2 || !at2.access_token) return at2 || { err_no: 40020, err_msg: "access_token unavailable", data: null };
+      xToken = at2.access_token;
+    }
+    const url = 'https://webcast.bytedance.com/api/gaming_con/round/sync_status';
+    const headers = { 'content-type': 'application/json', 'x-token': String(xToken) };
+    const list = Array.isArray(groupResultList) ? groupResultList.map((it) => ({ group_id: String(it.groupId !== undefined ? it.groupId : it.group_id), result: Number(it.result !== undefined ? it.result : 0) })) : [];
+    const payload = { app_id: String(appid), room_id: String(roomId), round_id: Number(roundId), end_time: Number(endTime), status: 2, group_result_list: list };
+    if (anchorOpenId) payload.anchor_open_id = String(anchorOpenId);
+    console.log('http_round_sync_end_call', { url, app_id: String(appid), room_id: String(roomId), round_id: Number(roundId), end_time: Number(endTime), status: 2, group_count: list.length, ts: Date.now() });
+    const resp = await fetch(url, { method: 'POST', headers, body: JSON.stringify(payload) });
+    const raw = await resp.text();
+    let body;
+    try { body = JSON.parse(raw); } catch (_) { body = { err_no: -1, err_msg: 'invalid json', raw }; }
+    console.log('http_round_sync_end_res', { body, ts: Date.now() });
+    return body;
+  } catch (e) {
+    console.log('http_round_sync_end_error', { err: String(e && e.message || e), ts: Date.now() });
+    return { err_no: -1, err_msg: String(e && e.message || e), data: null };
+  }
 }
 
 // Upload per-user round result list (batched by 50)
