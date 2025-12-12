@@ -143,6 +143,10 @@ wss.on("connection", (socket) => {
           socket.roomId = ridStr;
           if (data.openId) socket.openId = String(data.openId);
           else if (info.anchor_open_id) socket.openId = String(info.anchor_open_id);
+          try {
+            const anchorId = data.openId ? String(data.openId) : (info.anchor_open_id ? String(info.anchor_open_id) : null);
+            if (anchorId) { ROOM_ANCHOR_OPEN_ID.set(String(ridStr), String(anchorId)); console.log("room_anchor_cache_set", { roomId: String(ridStr), anchorOpenId: String(anchorId), ts: Date.now() }); }
+          } catch (_) {}
           console.log("ws_join", { roomId: ridStr, openId: socket.openId || null, via: "token_liveinfo", ts: Date.now() });
           console.log("ws_downlink", { type: "joined", roomId: ridStr, ts: Date.now() });
           wsSend(socket, { type: "joined", roomId: socket.roomId, roomIdStr: ridStr });
@@ -220,7 +224,7 @@ wss.on("connection", (socket) => {
         let roundId = Number(roundIdRaw);
         const startTime = Number(startTimeRaw || Math.floor(Date.now() / 1000));
         const appid = process.env.DOUYIN_APP_ID;
-        const anchorOpenId = socket.openId ? String(socket.openId) : undefined;
+        const anchorOpenId = ROOM_ANCHOR_OPEN_ID.get(String(roomId)) || (socket.openId ? String(socket.openId) : undefined);
         if (!roomId || !appid || !startTime) {
           wsSend(socket, { type: "startRound_failed", reason: !roomId ? "missing roomId" : (!startTime ? "missing startTime" : "missing appid") });
           return;
@@ -244,7 +248,7 @@ wss.on("connection", (socket) => {
         const roundIdRaw = data.roundId !== undefined ? data.roundId : data.RoundId;
         let roundId = Number(roundIdRaw || (CURRENT_ROUND.get(String(roomId)) || 0));
         const appid = process.env.DOUYIN_APP_ID;
-        const anchorOpenId = socket.openId ? String(socket.openId) : undefined;
+        const anchorOpenId = ROOM_ANCHOR_OPEN_ID.get(String(roomId)) || (socket.openId ? String(socket.openId) : undefined);
         const endTime = Math.floor(Date.now() / 1000);
 
         // Prefer client-provided group results
@@ -425,6 +429,8 @@ app.post("/live_data_callback", async (req, res) => {
         }
       }
     } catch (_) {}
+
+    //透传消息，拆散，增加个人信息（昵称、头像、分组）
     const ridStr = roomId ? String(roomId) : null;
     let roundIdForPayload = 0;
     if (ridStr) roundIdForPayload = (CURRENT_ROUND && CURRENT_ROUND.get(ridStr)) ? Number(CURRENT_ROUND.get(ridStr)) : 0;
@@ -920,6 +926,7 @@ function groupIdFromMessage(msg) {
 // 全局用户分组存储：键为 appId|openId|roomId|roundId，值为 groupId
 const USER_ROUND_GROUP = new Map();
 const CURRENT_ROUND = new Map();
+const ROOM_ANCHOR_OPEN_ID = new Map();
 
 // Key builder for USER_ROUND_GROUP
 // 构造用户分组键（USER_ROUND_GROUP）
