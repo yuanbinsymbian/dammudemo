@@ -917,8 +917,8 @@ async function uploadUserGroupInfo({ appid, openId, roomId, roundId, groupId }) 
 function groupIdFromMessage(msg) {
   const s = String(msg || "").trim().toLowerCase();
   if (!s) return null;
-  if (s === "1" || s === "左") return "Red";
-  if (s === "2" || s === "右") return "Blue";
+  if (s === "1" || s === "左") return "1";
+  if (s === "2" || s === "右") return "2";
   return null;
 }
 
