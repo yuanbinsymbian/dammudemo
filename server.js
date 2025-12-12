@@ -709,16 +709,16 @@ async function startLiveDataTask(appid, roomid, msgType) {
       if (!at2 || !at2.access_token) return at2 || { err_no: 40020, err_msg: "access_token unavailable", data: null };
       xToken = at2.access_token;
     }
-    const url = 'https://webcast.bytedance.com/api/live_data/task/get';
-    const qs = new URLSearchParams({ appid: String(appid), msg_type: String(msgType), roomid: String(roomid) }).toString();
+    const url = 'https://webcast.bytedance.com/api/live_data/task/start';
     const headers = { 'content-type': 'application/json', 'access-token': String(xToken) };
-    console.log('http_task_get_call', { url, appid: String(appid), roomid: String(roomid), msgType: String(msgType), ts: Date.now() });
-    const resp = await fetch(`${url}?${qs}`, { method: 'GET', headers });
+    const payload = { appid: String(appid), msg_type: String(msgType), roomid: String(roomid) };
+    console.log('http_task_start_call', { url, appid: String(appid), roomid: String(roomid), msgType: String(msgType), ts: Date.now() });
+    const resp = await fetch(url, { method: 'POST', headers, body: JSON.stringify(payload) });
     const body = await resp.json();
-    console.log('http_task_get_res', { body, ts: Date.now() });
+    console.log('http_task_start_res', { body, ts: Date.now() });
     return body;
   } catch (e) {
-    console.log('http_task_get_error', { err: String(e && e.message || e), ts: Date.now() });
+    console.log('http_task_start_error', { err: String(e && e.message || e), ts: Date.now() });
     return { err_no: -1, err_msg: String(e && e.message || e), data: null };
   }
 }
