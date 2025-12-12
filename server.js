@@ -796,13 +796,37 @@ async function roundUploadUserResultBatch({ appid, roomId, roundId, anchorOpenId
 // 通过 SDK 上报用户的对局结果
 // 参考文档：https://developer.open-douyin.com/docs/resource/zh-CN/interaction/develop/server/live-room-scope/user-scores-rank/user-data-report
 async function roundUploadUserResult({ appid, roomId, roundId, anchorOpenId, userList }) {
-  const client = getOpenApiClient();
-  const buildReq = (xt) => {
-    const base = { appId: String(appid), roomId: String(roomId), roundId: Number(roundId), xToken: xt, userList: Array.isArray(userList) ? userList : [] };
-    if (anchorOpenId) base.anchorOpenId = String(anchorOpenId);
-    return RoundUploadUserResultRequest ? new RoundUploadUserResultRequest(base) : base;
-  };
-  return await callSdkWithToken({ client, lower: "roundUploadUserResult", upper: "RoundUploadUserResult", buildReq, logCtx: { count: (userList && userList.length) || 0 } });
+  try {
+    const at = await fetchAccessToken(false);
+    let xToken = at && at.access_token ? at.access_token : null;
+    if (!xToken) {
+      const at2 = await fetchAccessToken(true);
+      if (!at2 || !at2.access_token) return at2 || { err_no: 40020, err_msg: "access_token unavailable", data: null };
+      xToken = at2.access_token;
+    }
+    const url = 'https://webcast.bytedance.com/api/gaming_con/round/upload_user_result';
+    const headers = { 'content-type': 'application/json', 'x-token': String(xToken) };
+    const list = Array.isArray(userList) ? userList.map((u) => ({
+      open_id: String(u.openId || u.userOpenId || ''),
+      round_result: Number(u.roundResult !== undefined ? u.roundResult : (u.isWin === true ? 1 : (u.isWin === false ? 2 : 0))),
+      score: Number(u.score || 0),
+      rank: Number(u.rank || 0),
+      winning_streak_count: Number(u.winningStreakCount || 0),
+      winning_points: String(u.winningPoints || '')
+    })).filter((x) => x.open_id) : [];
+    const payload = { app_id: String(appid), room_id: String(roomId), round_id: Number(roundId), user_list: list };
+    if (anchorOpenId) payload.anchor_open_id = String(anchorOpenId);
+    console.log('http_round_upload_user_result_call', { url, app_id: String(appid), room_id: String(roomId), round_id: Number(roundId), count: list.length, ts: Date.now() });
+    const resp = await fetch(url, { method: 'POST', headers, body: JSON.stringify(payload) });
+    const raw = await resp.text();
+    let body;
+    try { body = JSON.parse(raw); } catch (_) { body = { err_no: -1, err_msg: 'invalid json', raw }; }
+    console.log('http_round_upload_user_result_res', { body, ts: Date.now() });
+    return body;
+  } catch (e) {
+    console.log('http_round_upload_user_result_error', { err: String(e && e.message || e), ts: Date.now() });
+    return { err_no: -1, err_msg: String(e && e.message || e), data: null };
+  }
 }
 
 // Upload round rank list (Top N up to 150) after round ends
