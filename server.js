@@ -12,7 +12,10 @@ const worldRankings = require('./world_rankings');
 setInterval(async () => {
   try {
     console.log('开始执行世界榜单定时任务');
-    await worldRankings.processWorldRankings();
+    const at = await fetchAccessToken(true);
+    const accessToken = at && at.access_token ? at.access_token : null;
+    const appId = process.env.DOUYIN_APP_ID;
+    await worldRankings.processWorldRankings(accessToken,appId);
     console.log('世界榜单定时任务执行完成');
   } catch (error) {
     console.error('世界榜单定时任务执行失败:', error);
