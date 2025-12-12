@@ -429,16 +429,21 @@ app.post("/live_data_callback", async (req, res) => {
     let roundIdForPayload = 0;
     if (ridStr) roundIdForPayload = (CURRENT_ROUND && CURRENT_ROUND.get(ridStr)) ? Number(CURRENT_ROUND.get(ridStr)) : 0;
     const arr = Array.isArray(body) ? body : (Array.isArray(body.data) ? body.data : null);
-    const item = arr && arr[0] ? arr[0] : null;
-    const openIdPayload = item && (item.sec_openid || item.open_id) ? String(item.sec_openid || item.open_id) : null;
     const appidForPayload = process.env.DOUYIN_APP_ID || "";
-    const gidRes = getUserGroupId(appidForPayload, openIdPayload || "", ridStr || "", roundIdForPayload || 0);
-    const groupIdPayload = gidRes && gidRes.group_id ? gidRes.group_id : null;
-    const payload = { type: "live_data", room_id: ridStr, round_id: roundIdForPayload, group_id: groupIdPayload, open_id: openIdPayload || null, msg_type: headerMsgType || null, msg_id: item && item.msg_id || null, nickname: item && item.nickname || null, avatar_url: item && item.avatar_url || null, message_ts: item && item.timestamp || null, data: body, ts: Date.now() };
-    if (roomId) {
-      wsBroadcast(payload, roomId);
+    if (Array.isArray(arr) && arr.length > 0) {
+      for (const it of arr) {
+        const openIdPayload = it && (it.sec_openid || it.open_id) ? String(it.sec_openid || it.open_id) : null;
+        const gidRes = getUserGroupId(appidForPayload, openIdPayload || "", ridStr || "", roundIdForPayload || 0);
+        const groupIdPayload = gidRes && gidRes.group_id ? gidRes.group_id : null;
+        const payload = { type: "live_data", room_id: ridStr, round_id: roundIdForPayload, group_id: groupIdPayload, open_id: openIdPayload || null, msg_type: headerMsgType || null, msg_id: it && it.msg_id || null, nickname: it && it.nickname || null, avatar_url: it && it.avatar_url || null, message_ts: it && it.timestamp || null, data: it, ts: Date.now() };
+        if (roomId) wsBroadcast(payload, roomId); else wsBroadcast(payload);
+      }
     } else {
-      wsBroadcast(payload);
+      const openIdPayload = null;
+      const gidRes = getUserGroupId(appidForPayload, openIdPayload || "", ridStr || "", roundIdForPayload || 0);
+      const groupIdPayload = gidRes && gidRes.group_id ? gidRes.group_id : null;
+      const payload = { type: "live_data", room_id: ridStr, round_id: roundIdForPayload, group_id: groupIdPayload, open_id: null, msg_type: headerMsgType || null, msg_id: null, nickname: null, avatar_url: null, message_ts: null, data: body, ts: Date.now() };
+      if (roomId) wsBroadcast(payload, roomId); else wsBroadcast(payload);
     }
     return res.status(200).json({ err_no: 0, err_msg: "success", data: "" });
   } catch (e) {
