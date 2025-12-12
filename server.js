@@ -5,22 +5,7 @@ const http = require("http");
 const WebSocket = require("ws");
 const crypto = require("crypto");
 const mysql = require('mysql2/promise');
-// Douyin OpenAPI credential SDK — used to acquire access_token (xToken)
-// 抖音凭据 SDK：用于获取 access_token（xToken）
-let OpenDyCred = null;
-try { OpenDyCred = require("@open-dy/open_api_credential"); } catch (e) { OpenDyCred = null; console.log("cred_require_error", { pkg: "@open-dy/open_api_credential", err: String(e && e.message || e), ts: Date.now() }); }
-const CredentialClient = OpenDyCred && (OpenDyCred.default || OpenDyCred) || null;
-let OpenApiSdk;
-// Douyin OpenAPI SDK — business APIs (live info, task start, round status)
-// 抖音 OpenAPI SDK：包含直播信息、任务启动、对局状态同步等接口
-try { OpenApiSdk = require("@open-dy/open_api_sdk"); } catch (e) { OpenApiSdk = null; console.log("sdk_require_error", { pkg: "@open-dy/open_api_sdk", err: String(e && e.message || e), ts: Date.now() }); }
-// SDK 客户端：用于调用开放平台业务接口
-const SdkClient = OpenApiSdk && (OpenApiSdk.default || OpenApiSdk) || null;
-const RoundSyncStatusRequest = OpenApiSdk && OpenApiSdk.RoundSyncStatusRequest || null;
-const UploadUserGroupInfoRequest = OpenApiSdk && OpenApiSdk.UploadUserGroupInfoRequest || null;
-const RoundUploadUserResultRequest = OpenApiSdk && OpenApiSdk.RoundUploadUserResultRequest || null;
-const RoundUploadRankListRequest = OpenApiSdk && OpenApiSdk.RoundUploadRankListRequest || null;
-const RoundCompleteUploadUserResultRequest = OpenApiSdk && OpenApiSdk.RoundCompleteUploadUserResultRequest || null;
+
 
 // Basic server setup
 // 基本服务器配置
@@ -572,21 +557,12 @@ app.post("/api/user_group/query", async (req, res) => {
 // 凭据缓存与 SDK 客户端单例
 let ACCESS_TOKEN = null;
 let ACCESS_TOKEN_EXPIRES_AT = 0;
-let credentialClient = null;
-let openApiClient = null;
+ 
 
 // Lazily initialize OpenAPI SDK client using app credentials
 // 按需初始化 OpenAPI SDK 客户端（使用应用凭据）
 // 参考文档：https://developer.open-douyin.com/docs/resource/zh-CN/interaction/develop/server/sdk-overview
-function getOpenApiClient() {
-  if (!SdkClient) { console.log("sdk_client_unavailable", { reason: "missing SdkClient export", ts: Date.now() }); return null; }
-  if (openApiClient) return openApiClient;
-  const appid = process.env.DOUYIN_APP_ID;
-  const secret = process.env.DOUYIN_APP_SECRET;
-  if (!appid || !secret) { console.log("sdk_client_env_missing", { appid: !!appid, secret: !!secret, ts: Date.now() }); return null; }
-  try { openApiClient = new SdkClient({ clientKey: appid, clientSecret: secret }); } catch (e) { openApiClient = null; console.log("sdk_client_init_error", { err: String(e && e.message || e), ts: Date.now() }); }
-  return openApiClient;
-}
+
 
 // Acquire and cache access_token (xToken), with early refresh near expiry
 // 获取并缓存 access_token（xToken），在临近过期时提前刷新
@@ -1012,52 +988,7 @@ function findLatestRoundId(appid, openId, roomId) {
 // No public route for access_token; use fetchAccessToken() internally only.
 // 不提供公开的 access_token 路由；仅在内部使用 fetchAccessToken()
 
-function getSdkMethod(client, lower, upper, alt) {
-  let fn = null; let api = null;
-  if (client && lower && typeof client[lower] === "function") { fn = client[lower]; api = lower; }
-  else if (client && upper && typeof client[upper] === "function") { fn = client[upper]; api = upper; }
-  else if (client && alt && typeof client[alt] === "function") { fn = client[alt]; api = alt; }
-  return { fn, api };
-}
 
-async function callSdkWithToken({ client, lower, upper, alt, buildReq, logCtx }) {
-  const { fn, api } = getSdkMethod(client, lower, upper, alt);
-  console.log("sdk_call_in", { lower, upper, alt, client_ok: !!client, api_selected: api || null, ts: Date.now() });
-  if (!fn) {
-    console.log("sdk_method_missing", { lower, upper, alt, ts: Date.now() });
-    return { err_no: 40023, err_msg: "sdk_unavailable", data: null };
-  }
-  try {
-    const at = await fetchAccessToken(false);
-    const xToken = at && at.access_token ? at.access_token : null;
-    const xtStr = xToken ? String(xToken) : "";
-    const xtPreview = xtStr.length > 16 ? (xtStr.slice(0,8) + "..." + xtStr.slice(-8)) : xtStr;
-    const xtFull = process.env.DEBUG_LOG_XTOKEN === '1';
-    console.log("sdk_token", { api, hasToken: !!xToken, tokenLen: xtStr.length, token: xtFull ? xtStr : xtPreview, ts: Date.now() });
-    if (!xToken) {
-      const at2 = await fetchAccessToken(true);
-      if (!at2 || !at2.access_token) return at2 || { err_no: 40020, err_msg: "access_token unavailable", data: null };
-      const xt2 = String(at2.access_token);
-      const xt2Preview = xt2.length > 16 ? (xt2.slice(0,8) + "..." + xt2.slice(-8)) : xt2;
-      console.log("sdk_token_refresh", { api, tokenLen: xt2.length, token: xtFull ? xt2 : xt2Preview, ts: Date.now() });
-      const req = buildReq(at2.access_token);
-      try { console.log("sdk_request", { api, req, ts: Date.now() }); } catch (_) {}
-      const sdkRes = await fn.call(client, req);
-      try { console.log("sdk_call_res", { api, body: sdkRes, ts: Date.now() }); } catch (_) {}
-      console.log("sdk_call_ok", Object.assign({ api, ts: Date.now() }, logCtx || {}));
-      return sdkRes;
-    }
-    const req = buildReq(xToken);
-    try { console.log("sdk_request", { api, req, ts: Date.now() }); } catch (_) {}
-    const sdkRes = await fn.call(client, req);
-    try { console.log("sdk_call_res", { api, body: sdkRes, ts: Date.now() }); } catch (_) {}
-    console.log("sdk_call_ok", Object.assign({ api, ts: Date.now() }, logCtx || {}));
-    return sdkRes;
-  } catch (e) {
-    console.log("sdk_call_error", { api: api, err: String(e && e.message || e), ts: Date.now() });
-    return { err_no: -1, err_msg: String(e && e.message || e), data: null };
-  }
-}
 
 // Global user core stats: points and win-streak per openId
 // 全局用户核心数据：按 openId 存储积分与连胜
