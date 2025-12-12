@@ -19,7 +19,6 @@ setInterval(async () => {
   }
 }, 600000); // 600000毫秒 = 10分钟
 
-
 // Basic server setup
 // 基本服务器配置
 const app = express();
@@ -302,8 +301,12 @@ wss.on("connection", (socket) => {
         // Update user stats based on participants' results
         // 根据参与用户的输赢与积分，更新用户积分与连胜
         const users = Array.isArray(data.users) ? data.users : [];
-        // 使用批量更新代替循环单个更新
-        await updateUserStatsBatch(users);
+        for (const u of users) {
+          const oid = String(u.openId || u.userOpenId || "");
+          const pts = Number(u.addPoints || u.points || 0);
+          const isWin = u.isWin === true ? true : (u.isWin === false ? false : null);
+          if (oid) await updateUserStats(oid, pts, isWin);
+        }
 
         // Build per-user round result payload and upload to Douyin ranking
         // 构建本局用户结果并上报到抖音排行榜
@@ -926,8 +929,8 @@ async function uploadUserGroupInfo({ appid, openId, roomId, roundId, groupId }) 
 function groupIdFromMessage(msg) {
   const s = String(msg || "").trim().toLowerCase();
   if (!s) return null;
-  if (s === "1" || s === "左") return "Blue";
-  if (s === "2" || s === "右") return "Red";
+  if (s === "1" || s === "左") return "1";
+  if (s === "2" || s === "右") return "2";
   return null;
 }
 
@@ -1033,27 +1036,6 @@ async function selectUserCoreStats(openId) {
     return null;
   }
 }
-
-// Batch select user core stats by openIds
-// 批量查询用户核心数据
-async function selectUserCoreStatsBatch(openIds) {
-  try {
-    const oids = openIds.map(id => String(id || "")).filter(id => id);
-    if (oids.length === 0) return [];
-    
-    // 使用IN子句批量查询
-    const placeholders = oids.map(() => '?').join(',');
-    const [rows, fields] = await pool.execute(
-      `SELECT * FROM user_core_stats WHERE open_id IN (${placeholders})`,
-      oids
-    );
-    console.log('批量查询UserCoreStats数据:', rows);
-    return rows;
-  } catch (err) {
-    console.error('批量查询异常：', err);
-    return [];
-  }
-}
 async function updateUserCoreStats(openId, points, streak) {
   try {
     // 获取连接 + 执行查询（一步到位）
@@ -1065,37 +1047,6 @@ async function updateUserCoreStats(openId, points, streak) {
     return rows;
   } catch (err) {
     console.error('更新异常：', err);
-    return null;
-  }
-}
-
-// Batch update user core stats
-// 批量更新用户核心数据
-async function updateUserCoreStatsBatch(userStats) {
-  try {
-    if (!Array.isArray(userStats) || userStats.length === 0) return null;
-    
-    // 构建批量插入/更新的SQL语句
-    const values = [];
-    const placeholders = [];
-    
-    userStats.forEach(({ openId, points, streak }) => {
-      const oid = String(openId || "");
-      if (!oid) return;
-      
-      placeholders.push('(?, ?, ?)');
-      values.push(oid, points, streak, points, streak);
-    });
-    
-    if (placeholders.length === 0) return null;
-    
-    const sql = `INSERT INTO user_core_stats (open_id, points, streak) VALUES ${placeholders.join(', ')} ON DUPLICATE KEY UPDATE points = VALUES(points), streak = VALUES(streak)`;
-    
-    const [rows, fields] = await pool.execute(sql, values);
-    console.log('批量更新UserCoreStats数据:', rows);
-    return rows;
-  } catch (err) {
-    console.error('批量更新异常：', err);
     return null;
   }
 }
@@ -1124,56 +1075,3 @@ async function updateUserStats(openId, addPoints, isWin) {
   await updateUserCoreStats(oid, points, streak);
   return { err_no: 0, err_msg: "ok", data: next };
 }
-
-// Batch update user stats based on match results
-// 批量根据胜负更新用户积分与连胜
-async function updateUserStatsBatch(userUpdates) {
-  if (!Array.isArray(userUpdates) || userUpdates.length === 0) return { err_no: 40002, err_msg: "invalid user updates", data: null };
-  
-  // 收集所有有效的openId
-  const validUpdates = userUpdates.filter(u => {
-    const oid = String(u.openId || u.userOpenId || "");
-    return !!oid;
-  });
-  
-  if (validUpdates.length === 0) return { err_no: 0, err_msg: "ok", data: [] };
-  
-  // 批量获取所有用户的当前数据
-  const openIds = validUpdates.map(u => String(u.openId || u.userOpenId || ""));
-  const allUserStats = await selectUserCoreStatsBatch(openIds);
-  
-  // 创建用户当前数据的映射，方便查找
-  const userStatsMap = new Map();
-  allUserStats.forEach(user => {
-    userStatsMap.set(String(user.open_id), user);
-  });
-  
-  // 计算每个用户的新积分和连胜
-  const userCoreStatsToUpdate = [];
-  validUpdates.forEach(u => {
-    const oid = String(u.openId || u.userOpenId || "");
-    const inc = Number(u.addPoints || u.points || 0);
-    const isWin = u.isWin === true ? true : (u.isWin === false ? false : null);
-    
-    const cur = userStatsMap.get(oid) || { points: 0, streak: 0 };
-    let points = Number(cur.points || 0);
-    let streak = Number(cur.streak || 0);
-    
-    if (isWin) {
-      points += Math.max(0, inc);
-      streak = streak + 1;
-    } else {
-      const reduce = Math.max(1, Math.floor(streak * 0.2));
-      streak = Math.max(0, streak - reduce);
-    }
-    
-    userCoreStatsToUpdate.push({ openId: oid, points, streak });
-  });
-  
-  // 批量更新到数据库
-  const result = await updateUserCoreStatsBatch(userCoreStatsToUpdate);
-  
-  return { err_no: 0, err_msg: "ok", data: result };
-}
-
-
