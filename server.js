@@ -712,7 +712,7 @@ async function startLiveDataTask(appid, roomid, msgType) {
     const url = 'https://webcast.bytedance.com/api/live_data/task/start';
     const headers = { 'content-type': 'application/json', 'access-token': String(xToken) };
     const payload = { appid: String(appid), msg_type: String(msgType), roomid: String(roomid) };
-    console.log('http_task_start_call', { url, appid: String(appid), roomid: String(roomid), msgType: String(msgType), ts: Date.now() });
+    console.log('http_task_start_call', { url, appid: String(appid), roomid: String(roomid), msg_type: String(msgType), ts: Date.now() });
     const resp = await fetch(url, { method: 'POST', headers, body: JSON.stringify(payload) });
     const body = await resp.json();
     console.log('http_task_start_res', { body, ts: Date.now() });
