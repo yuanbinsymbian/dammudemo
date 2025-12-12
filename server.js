@@ -715,7 +715,8 @@ async function roundSyncStatusStart({ appid, roomId, roundId, startTime, anchorO
     const headers = { 'content-type': 'application/json', 'x-token': String(xToken) };
     const payload = { app_id: String(appid), room_id: String(roomId), round_id: Number(roundId), start_time: Number(startTime), status: 1 };
     if (anchorOpenId) payload.anchor_open_id = String(anchorOpenId);
-    console.log('http_round_sync_start_call', { url, app_id: String(appid), room_id: String(roomId), round_id: Number(roundId), start_time: Number(startTime), status: 1, ts: Date.now() });
+    console.log('http_round_sync_start_call', { url, app_id: String(appid), room_id: String(roomId), round_id: Number(roundId), start_time: Number(startTime), status: 1, anchor_open_id: anchorOpenId ? String(anchorOpenId) : null, ts: Date.now() });
+    console.log('http_round_sync_start_payload', { payload, ts: Date.now() });
     const resp = await fetch(url, { method: 'POST', headers, body: JSON.stringify(payload) });
     const raw = await resp.text();
     let body;
@@ -745,7 +746,8 @@ async function roundSyncStatusEnd({ appid, roomId, roundId, endTime, groupResult
     const list = Array.isArray(groupResultList) ? groupResultList.map((it) => ({ group_id: String(it.groupId !== undefined ? it.groupId : it.group_id), result: Number(it.result !== undefined ? it.result : 0) })) : [];
     const payload = { app_id: String(appid), room_id: String(roomId), round_id: Number(roundId), end_time: Number(endTime), status: 2, group_result_list: list };
     if (anchorOpenId) payload.anchor_open_id = String(anchorOpenId);
-    console.log('http_round_sync_end_call', { url, app_id: String(appid), room_id: String(roomId), round_id: Number(roundId), end_time: Number(endTime), status: 2, group_count: list.length, ts: Date.now() });
+    console.log('http_round_sync_end_call', { url, app_id: String(appid), room_id: String(roomId), round_id: Number(roundId), end_time: Number(endTime), status: 2, group_count: list.length, anchor_open_id: anchorOpenId ? String(anchorOpenId) : null, ts: Date.now() });
+    console.log('http_round_sync_end_payload', { payload, ts: Date.now() });
     const resp = await fetch(url, { method: 'POST', headers, body: JSON.stringify(payload) });
     const raw = await resp.text();
     let body;
@@ -792,7 +794,8 @@ async function roundUploadUserResult({ appid, roomId, roundId, anchorOpenId, use
     })).filter((x) => x.open_id) : [];
     const payload = { app_id: String(appid), room_id: String(roomId), round_id: Number(roundId), user_list: list };
     if (anchorOpenId) payload.anchor_open_id = String(anchorOpenId);
-    console.log('http_round_upload_user_result_call', { url, app_id: String(appid), room_id: String(roomId), round_id: Number(roundId), count: list.length, ts: Date.now() });
+    console.log('http_round_upload_user_result_call', { url, app_id: String(appid), room_id: String(roomId), round_id: Number(roundId), count: list.length, anchor_open_id: anchorOpenId ? String(anchorOpenId) : null, ts: Date.now() });
+    console.log('http_round_upload_user_result_payload', { payload, ts: Date.now() });
     const resp = await fetch(url, { method: 'POST', headers, body: JSON.stringify(payload) });
     const raw = await resp.text();
     let body;
@@ -826,7 +829,8 @@ async function roundUploadRankList({ appid, roomId, roundId, anchorOpenId, rankL
     })).filter((u) => u.open_id) : [];
     const payload = { app_id: String(appid), room_id: String(roomId), round_id: Number(roundId), rank_list: list };
     if (anchorOpenId) payload.anchor_open_id = String(anchorOpenId);
-    console.log('http_round_upload_rank_list_call', { url, app_id: String(appid), room_id: String(roomId), round_id: Number(roundId), count: list.length, ts: Date.now() });
+    console.log('http_round_upload_rank_list_call', { url, app_id: String(appid), room_id: String(roomId), round_id: Number(roundId), count: list.length, anchor_open_id: anchorOpenId ? String(anchorOpenId) : null, ts: Date.now() });
+    console.log('http_round_upload_rank_list_payload', { payload, ts: Date.now() });
     const resp = await fetch(url, { method: 'POST', headers, body: JSON.stringify(payload) });
     const raw = await resp.text();
     let body;
@@ -855,7 +859,8 @@ async function roundCompleteUploadUserResult({ appid, roomId, roundId, anchorOpe
     const headers = { 'content-type': 'application/json', 'x-token': String(xToken) };
     const payload = { app_id: String(appid), room_id: String(roomId), round_id: Number(roundId), complete_time: Number(completeTime) };
     if (anchorOpenId) payload.anchor_open_id = String(anchorOpenId);
-    console.log('http_round_complete_upload_call', { url, app_id: String(appid), room_id: String(roomId), round_id: Number(roundId), complete_time: Number(completeTime), ts: Date.now() });
+    console.log('http_round_complete_upload_call', { url, app_id: String(appid), room_id: String(roomId), round_id: Number(roundId), complete_time: Number(completeTime), anchor_open_id: anchorOpenId ? String(anchorOpenId) : null, ts: Date.now() });
+    console.log('http_round_complete_upload_payload', { payload, ts: Date.now() });
     const resp = await fetch(url, { method: 'POST', headers, body: JSON.stringify(payload) });
     const raw = await resp.text();
     let body;
