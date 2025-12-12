@@ -846,13 +846,29 @@ async function roundUploadRankList({ appid, roomId, roundId, anchorOpenId, rankL
 // 标记本局用户对局数据上报完成
 // 参考文档：https://developer.open-douyin.com/docs/resource/zh-CN/interaction/develop/server/live-room-scope/user-scores-rank/finish-user-data-report
 async function roundCompleteUploadUserResult({ appid, roomId, roundId, anchorOpenId, completeTime }) {
-  const client = getOpenApiClient();
-  const buildReq = (xt) => {
-    const base = { appId: String(appid), roomId: String(roomId), roundId: Number(roundId), completeTime: Number(completeTime), xToken: xt };
-    if (anchorOpenId) base.anchorOpenId = String(anchorOpenId);
-    return RoundCompleteUploadUserResultRequest ? new RoundCompleteUploadUserResultRequest(base) : base;
-  };
-  return await callSdkWithToken({ client, lower: "roundCompleteUploadUserResult", upper: "RoundCompleteUploadUserResult", buildReq });
+  try {
+    const at = await fetchAccessToken(false);
+    let xToken = at && at.access_token ? at.access_token : null;
+    if (!xToken) {
+      const at2 = await fetchAccessToken(true);
+      if (!at2 || !at2.access_token) return at2 || { err_no: 40020, err_msg: "access_token unavailable", data: null };
+      xToken = at2.access_token;
+    }
+    const url = 'https://webcast.bytedance.com/api/gaming_con/round/complete_upload_user_result';
+    const headers = { 'content-type': 'application/json', 'x-token': String(xToken) };
+    const payload = { app_id: String(appid), room_id: String(roomId), round_id: Number(roundId), complete_time: Number(completeTime) };
+    if (anchorOpenId) payload.anchor_open_id = String(anchorOpenId);
+    console.log('http_round_complete_upload_call', { url, app_id: String(appid), room_id: String(roomId), round_id: Number(roundId), complete_time: Number(completeTime), ts: Date.now() });
+    const resp = await fetch(url, { method: 'POST', headers, body: JSON.stringify(payload) });
+    const raw = await resp.text();
+    let body;
+    try { body = JSON.parse(raw); } catch (_) { body = { err_no: -1, err_msg: 'invalid json', raw }; }
+    console.log('http_round_complete_upload_res', { body, ts: Date.now() });
+    return body;
+  } catch (e) {
+    console.log('http_round_complete_upload_error', { err: String(e && e.message || e), ts: Date.now() });
+    return { err_no: -1, err_msg: String(e && e.message || e), data: null };
+  }
 }
 
 // Upload user group info to Douyin server after group assignment
