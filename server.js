@@ -727,13 +727,29 @@ async function startLiveDataTask(appid, roomid, msgType) {
 // 仅使用 SDK 同步对局开始状态：status=1，可选主播 openId，自动注入 xToken
 // 参考文档：https://developer.open-douyin.com/docs/resource/zh-CN/interaction/develop/server/live-room-scope/user-team-select/sync-game-state
 async function roundSyncStatusStart({ appid, roomId, roundId, startTime, anchorOpenId }) {
-  const client = getOpenApiClient();
-  const buildReq = (xt) => {
-    const base = { appId: String(appid), roomId: String(roomId), roundId: Number(roundId), startTime: Number(startTime), status: 1, xToken: xt };
-    if (anchorOpenId) base.anchorOpenId = String(anchorOpenId);
-    return RoundSyncStatusRequest ? new RoundSyncStatusRequest(base) : base;
-  };
-  return await callSdkWithToken({ client, lower: "roundSyncStatus", upper: "RoundSyncStatus", alt: "gamingConRoundSyncStatus", buildReq });
+  try {
+    const at = await fetchAccessToken(false);
+    let xToken = at && at.access_token ? at.access_token : null;
+    if (!xToken) {
+      const at2 = await fetchAccessToken(true);
+      if (!at2 || !at2.access_token) return at2 || { err_no: 40020, err_msg: "access_token unavailable", data: null };
+      xToken = at2.access_token;
+    }
+    const url = 'https://webcast.bytedance.com/api/gaming_con/round/sync_status';
+    const headers = { 'content-type': 'application/json', 'x-token': String(xToken) };
+    const payload = { app_id: String(appid), room_id: String(roomId), round_id: Number(roundId), start_time: Number(startTime), status: 1 };
+    if (anchorOpenId) payload.anchor_open_id = String(anchorOpenId);
+    console.log('http_round_sync_start_call', { url, app_id: String(appid), room_id: String(roomId), round_id: Number(roundId), start_time: Number(startTime), status: 1, ts: Date.now() });
+    const resp = await fetch(url, { method: 'POST', headers, body: JSON.stringify(payload) });
+    const raw = await resp.text();
+    let body;
+    try { body = JSON.parse(raw); } catch (_) { body = { err_no: -1, err_msg: 'invalid json', raw }; }
+    console.log('http_round_sync_start_res', { body, ts: Date.now() });
+    return body;
+  } catch (e) {
+    console.log('http_round_sync_start_error', { err: String(e && e.message || e), ts: Date.now() });
+    return { err_no: -1, err_msg: String(e && e.message || e), data: null };
+  }
 }
 
 // Round status sync (end)
