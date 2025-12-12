@@ -398,28 +398,28 @@ app.post("/live_data_callback", async (req, res) => {
         console.log("live_data_round_cursor", { roomId: ridStr, roundId, ts: Date.now() });
         if (roundId) {
           const arr = Array.isArray(body) ? body : (Array.isArray(body.data) ? body.data : null);
-          const item = arr && arr[0] ? arr[0] : null;
-          const openId = item && item.sec_openid ? String(item.sec_openid) : null;
-          const content = item && item.content !== undefined ? String(item.content) : null;
-          const gid = groupIdFromMessage(content);
-          console.log("live_comment_gid_parse", { roomId: ridStr, roundId, openId, content, gid, ts: Date.now() });
-          if (openId && gid) {
-            const r = recordUserGroup(appid, openId, ridStr, roundId, gid);
-            if (r && r.err_no !== 0) {
-              console.log("group_record_error", { roomId: ridStr, roundId, openId, gid, body: r, ts: Date.now() });
-            } else {
-              console.log("group_record_ok", { roomId: ridStr, roundId, openId, gid, ts: Date.now() });
-              if (ridStr !== DEBUG_ROOMID){
-                const up = await uploadUserGroupInfo({ appid, openId, roomId: ridStr, roundId, groupId: gid });
-                if (up && (up.errcode === 0 || up.err_no === 0)) console.log("group_upload_ok", { roomId: ridStr, roundId, openId, gid, ts: Date.now() });
-                else console.log("group_upload_error", { roomId: ridStr, roundId, openId, gid, body: up, ts: Date.now() });
-              }else{
-                console.log("group_upload_skip", { roomId: ridStr, roundId, openId, gid, ts: Date.now() });
+          const items = Array.isArray(arr) ? arr : [];
+          for (const item of items) {
+            const openId = item && item.sec_openid ? String(item.sec_openid) : null;
+            const content = item && item.content !== undefined ? String(item.content) : null;
+            const gid = groupIdFromMessage(content);
+            console.log("live_comment_gid_parse", { roomId: ridStr, roundId, openId, content, gid, ts: Date.now() });
+            if (openId && gid) {
+              const r = recordUserGroup(appid, openId, ridStr, roundId, gid);
+              if (r && r.err_no !== 0) {
+                console.log("group_record_error", { roomId: ridStr, roundId, openId, gid, body: r, ts: Date.now() });
+              } else {
+                console.log("group_record_ok", { roomId: ridStr, roundId, openId, gid, ts: Date.now() });
+                if (ridStr !== DEBUG_ROOMID){
+                  const up = await uploadUserGroupInfo({ appid, openId, roomId: ridStr, roundId, groupId: gid });
+                  if (up && (up.errcode === 0 || up.err_no === 0)) console.log("group_upload_ok", { roomId: ridStr, roundId, openId, gid, ts: Date.now() });
+                  else console.log("group_upload_error", { roomId: ridStr, roundId, openId, gid, body: up, ts: Date.now() });
+                }else{
+                  console.log("group_upload_skip", { roomId: ridStr, roundId, openId, gid, ts: Date.now() });
+                }
+                const msg = { type: "live_data", room_id: roomId, round_id: roundId, msg_type:"group_push", group_id: gid, open_id: openId, data: item, ts: Date.now() };
+                wsBroadcast(msg, roomId);
               }
-              //下发一个事件，加入分组
-              const msg = { type: "live_data", room_id: roomId, round_id: roundId, msg_type:"group_push", group_id: gid, open_id: openId, data: body, ts: Date.now() };
-              // console.log("ws_broadcast", { message: msg, ts: Date.now() });
-              wsBroadcast(msg, roomId);
             }
           }
         }
