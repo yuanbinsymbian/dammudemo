@@ -6,6 +6,18 @@ const WebSocket = require("ws");
 const crypto = require("crypto");
 const mysql = require('mysql2/promise');
 
+// 导入世界榜单模块
+const worldRankings = require('./world_rankings');
+// 设置定时任务，每10分钟执行一次
+setInterval(async () => {
+  try {
+    console.log('开始执行世界榜单定时任务');
+    await worldRankings.processWorldRankings();
+    console.log('世界榜单定时任务执行完成');
+  } catch (error) {
+    console.error('世界榜单定时任务执行失败:', error);
+  }
+}, 600000); // 600000毫秒 = 10分钟
 
 // Basic server setup
 // 基本服务器配置
