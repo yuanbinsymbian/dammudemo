@@ -859,12 +859,28 @@ async function roundCompleteUploadUserResult({ appid, roomId, roundId, anchorOpe
 // 将用户分组结果上报抖音服务器
 // 参考文档：https://developer.open-douyin.com/docs/resource/zh-CN/interaction/develop/server/live-room-scope/user-team-select/report-camp-data
 async function uploadUserGroupInfo({ appid, openId, roomId, roundId, groupId }) {
-  const client = getOpenApiClient();
-  const buildReq = (xt) => {
-    const base = { appId: String(appid), groupId: String(groupId), openId: String(openId), roomId: String(roomId), roundId: Number(roundId), xToken: xt };
-    return UploadUserGroupInfoRequest ? new UploadUserGroupInfoRequest(base) : base;
-  };
-  return await callSdkWithToken({ client, lower: "uploadUserGroupInfo", upper: "UploadUserGroupInfo", alt: "gamingConRoundUploadUserGroupInfo", buildReq });
+  try {
+    const at = await fetchAccessToken(false);
+    let xToken = at && at.access_token ? at.access_token : null;
+    if (!xToken) {
+      const at2 = await fetchAccessToken(true);
+      if (!at2 || !at2.access_token) return at2 || { err_no: 40020, err_msg: "access_token unavailable", data: null };
+      xToken = at2.access_token;
+    }
+    const url = 'https://webcast.bytedance.com/api/gaming_con/round/upload_user_group_info';
+    const headers = { 'content-type': 'application/json', 'x-token': String(xToken) };
+    const payload = { app_id: String(appid), group_id: String(groupId), open_id: String(openId), room_id: String(roomId), round_id: Number(roundId) };
+    console.log('http_upload_user_group_call', { url, app_id: String(appid), room_id: String(roomId), round_id: Number(roundId), group_id: String(groupId), open_id: String(openId), ts: Date.now() });
+    const resp = await fetch(url, { method: 'POST', headers, body: JSON.stringify(payload) });
+    const raw = await resp.text();
+    let body;
+    try { body = JSON.parse(raw); } catch (_) { body = { err_no: -1, err_msg: 'invalid json', raw }; }
+    console.log('http_upload_user_group_res', { body, ts: Date.now() });
+    return body;
+  } catch (e) {
+    console.log('http_upload_user_group_error', { err: String(e && e.message || e), ts: Date.now() });
+    return { err_no: -1, err_msg: String(e && e.message || e), data: null };
+  }
 }
 
 // Map user comment text to a game group: "1"/"左" → Blue, "2"/"右" → Red
