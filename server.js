@@ -833,13 +833,34 @@ async function roundUploadUserResult({ appid, roomId, roundId, anchorOpenId, use
 // 在回合结束后上报榜单列表（最多 Top150）
 // 参考文档：https://developer.open-douyin.com/docs/resource/zh-CN/interaction/develop/server/live-room-scope/user-scores-rank/game-list-report
 async function roundUploadRankList({ appid, roomId, roundId, anchorOpenId, rankList }) {
-  const client = getOpenApiClient();
-  const buildReq = (xt) => {
-    const base = { appId: String(appid), roomId: String(roomId), roundId: Number(roundId), xToken: xt, rankList: Array.isArray(rankList) ? rankList : [] };
-    if (anchorOpenId) base.anchorOpenId = String(anchorOpenId);
-    return RoundUploadRankListRequest ? new RoundUploadRankListRequest(base) : base;
-  };
-  return await callSdkWithToken({ client, lower: "roundUploadRankList", upper: "RoundUploadRankList", buildReq, logCtx: { count: (rankList && rankList.length) || 0 } });
+  try {
+    const at = await fetchAccessToken(false);
+    let xToken = at && at.access_token ? at.access_token : null;
+    if (!xToken) {
+      const at2 = await fetchAccessToken(true);
+      if (!at2 || !at2.access_token) return at2 || { err_no: 40020, err_msg: "access_token unavailable", data: null };
+      xToken = at2.access_token;
+    }
+    const url = 'https://webcast.bytedance.com/api/gaming_con/round/upload_rank_list';
+    const headers = { 'content-type': 'application/json', 'x-token': String(xToken) };
+    const list = Array.isArray(rankList) ? rankList.map((x) => ({
+      open_id: String(x.openId || x.userOpenId || ''),
+      score: Number(x.score || 0),
+      rank: Number(x.rank || 0)
+    })).filter((u) => u.open_id) : [];
+    const payload = { app_id: String(appid), room_id: String(roomId), round_id: Number(roundId), rank_list: list };
+    if (anchorOpenId) payload.anchor_open_id = String(anchorOpenId);
+    console.log('http_round_upload_rank_list_call', { url, app_id: String(appid), room_id: String(roomId), round_id: Number(roundId), count: list.length, ts: Date.now() });
+    const resp = await fetch(url, { method: 'POST', headers, body: JSON.stringify(payload) });
+    const raw = await resp.text();
+    let body;
+    try { body = JSON.parse(raw); } catch (_) { body = { err_no: -1, err_msg: 'invalid json', raw }; }
+    console.log('http_round_upload_rank_list_res', { body, ts: Date.now() });
+    return body;
+  } catch (e) {
+    console.log('http_round_upload_rank_list_error', { err: String(e && e.message || e), ts: Date.now() });
+    return { err_no: -1, err_msg: String(e && e.message || e), data: null };
+  }
 }
 
 // Mark completion of user result upload for current round
