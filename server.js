@@ -303,23 +303,32 @@ wss.on("connection", (socket) => {
         // Build per-user round result payload and upload to Douyin ranking
         // 构建本局用户结果并上报到抖音排行榜
         try {
-          const ranked = [...users].map((u) => ({
-            openId: String(u.openId || u.userOpenId || ""),
-            score: Number(u.addPoints || u.points || 0),
-            // isWin: !!(u.isWin || (winner && typeof u.groupId === "string" && String(u.groupId).trim().toLowerCase() === w))
-            isWin: Number(u.isWin || 0)
-          })).filter((x) => x.openId);
+          const ranked = [...users]
+            .map((u) => ({
+              openId: String(u.openId || u.userOpenId || ""),
+              score: Number(u.addPoints || u.points || 0),
+              isWin: (u.isWin === true ? true : (u.isWin === false ? false : null))
+            }))
+            .filter((x) => !!x.openId);
           ranked.sort((a, b) => b.score - a.score);
-          const cur_in_mysql = await selectUserCoreStats(oid);
-          const withRank = ranked.map((x, idx) => ({
-            openId: x.openId,
-            roundResult: x.isWin === true ? 1 : (x.isWin === false ? 2 : 0),
-            score: x.score,
-            rank: idx + 1,
-            // winningStreakCount: (USER_CORE_STATS.get(x.openId) && USER_CORE_STATS.get(x.openId).streak) || 0,
-            winningStreakCount: (cur_in_mysql && cur_in_mysql.length > 0 ? cur_in_mysql[0].streak : 0) || 0,
-            winningPoints: ""
-          }));
+          const withRank = [];
+          for (let idx = 0; idx < ranked.length; idx++) {
+            const x = ranked[idx];
+            let streak = 0;
+            try {
+              const r = await selectUserCoreStats(x.openId);
+              streak = r && r.length > 0 ? Number(r[0].streak || 0) : 0;
+            } catch (_) { streak = 0; }
+            const roundResult = x.isWin === true ? 1 : (x.isWin === false ? 2 : 0);
+            withRank.push({
+              openId: x.openId,
+              roundResult,
+              score: x.score,
+              rank: idx + 1,
+              winningStreakCount: streak,
+              winningPoints: ""
+            });
+          }
           if (withRank.length > 0) {
             await roundUploadUserResultBatch({ appid, roomId, roundId, anchorOpenId, userList: withRank });
             await roundUploadRankList({ appid, roomId, roundId, anchorOpenId, rankList: withRank.slice(0, 150) });
