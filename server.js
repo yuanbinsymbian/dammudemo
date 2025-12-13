@@ -307,35 +307,15 @@ wss.on("connection", (socket) => {
         // Build per-user round result payload and upload to Douyin ranking
         // 构建本局用户结果并上报到抖音排行榜
         try {
-          let withRank = [];
-          if (updatedUsers.length > 0) {
-            const ranked = [...updatedUsers].sort((a, b) => Number(b.pts || 0) - Number(a.pts || 0));
-            withRank = ranked.map((x, idx) => ({
-              openId: x.openId,
-              roundResult: x.isWin === true ? 1 : (x.isWin === false ? 2 : 0),
-              score: Number(x.pts || 0),
-              rank: idx + 1,
-              winningStreakCount: Number(x.streak || 0),
-              winningPoints: ""
-            }));
-          } else {
-            const baseList = [...users]
-              .map((u) => ({
-                openId: String(u.openId || u.userOpenId || ""),
-                pts: Number(u.addPoints || u.points || 0),
-                isWin: (u.isWin === true ? true : (u.isWin === false ? false : null))
-              }))
-              .filter((x) => !!x.openId);
-            const ranked = baseList.sort((a, b) => Number(b.pts || 0) - Number(a.pts || 0));
-            withRank = ranked.map((x, idx) => ({
-              openId: x.openId,
-              roundResult: x.isWin === true ? 1 : (x.isWin === false ? 2 : 0),
-              score: Number(x.pts || 0),
-              rank: idx + 1,
-              winningStreakCount: 0,
-              winningPoints: ""
-            }));
-          }
+          const ranked = [...updatedUsers].sort((a, b) => Number(b.pts || 0) - Number(a.pts || 0));
+          const withRank = ranked.map((x, idx) => ({
+            openId: x.openId,
+            roundResult: x.isWin === true ? 1 : (x.isWin === false ? 2 : 0),
+            score: Number(x.pts || 0),
+            rank: idx + 1,
+            winningStreakCount: Number(x.streak || 0),
+            winningPoints: ""
+          }));
           if (withRank.length > 0) {
             await roundUploadUserResultBatch({ appid, roomId, roundId, anchorOpenId, userList: withRank });
             await roundUploadRankList({ appid, roomId, roundId, anchorOpenId, rankList: withRank.slice(0, 150) });
