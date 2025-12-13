@@ -316,6 +316,10 @@ wss.on("connection", (socket) => {
             winningStreakCount: Number(x.streak || 0),
             winningPoints: ""
           }));
+          try {
+            const preview = withRank.slice(0, 20);
+            console.log("round_rank_list", { roomId, roundId, count: withRank.length, preview, ts: Date.now() });
+          } catch (_) {}
           if (withRank.length > 0) {
             await roundUploadUserResultBatch({ appid, roomId, roundId, anchorOpenId, userList: withRank });
             await roundUploadRankList({ appid, roomId, roundId, anchorOpenId, rankList: withRank.slice(0, 150) });
