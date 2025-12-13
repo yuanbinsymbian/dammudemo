@@ -307,31 +307,34 @@ wss.on("connection", (socket) => {
         // Build per-user round result payload and upload to Douyin ranking
         // 构建本局用户结果并上报到抖音排行榜
         try {
-          const baseList = updatedUsers.length > 0 ? updatedUsers.map((u)=>({ openId: u.openId, score: Number(u.pts||0), isWin: u.isWin })) : [...users]
-            .map((u) => ({
-              openId: String(u.openId || u.userOpenId || ""),
-              score: Number(u.addPoints || u.points || 0),
-              isWin: (u.isWin === true ? true : (u.isWin === false ? false : null))
-            }))
-            .filter((x) => !!x.openId);
-          const ranked = baseList.sort((a, b) => b.score - a.score);
-          const withRank = [];
-          for (let idx = 0; idx < ranked.length; idx++) {
-            const x = ranked[idx];
-            let streak = 0;
-            try {
-              const r = await selectUserCoreStats(x.openId);
-              streak = r && r.length > 0 ? Number(r[0].streak || 0) : 0;
-            } catch (_) { streak = 0; }
-            const roundResult = x.isWin === true ? 1 : (x.isWin === false ? 2 : 0);
-            withRank.push({
+          let withRank = [];
+          if (updatedUsers.length > 0) {
+            const ranked = [...updatedUsers].sort((a, b) => Number(b.pts || 0) - Number(a.pts || 0));
+            withRank = ranked.map((x, idx) => ({
               openId: x.openId,
-              roundResult,
-              score: x.score,
+              roundResult: x.isWin === true ? 1 : (x.isWin === false ? 2 : 0),
+              score: Number(x.pts || 0),
               rank: idx + 1,
-              winningStreakCount: streak,
+              winningStreakCount: Number(x.streak || 0),
               winningPoints: ""
-            });
+            }));
+          } else {
+            const baseList = [...users]
+              .map((u) => ({
+                openId: String(u.openId || u.userOpenId || ""),
+                pts: Number(u.addPoints || u.points || 0),
+                isWin: (u.isWin === true ? true : (u.isWin === false ? false : null))
+              }))
+              .filter((x) => !!x.openId);
+            const ranked = baseList.sort((a, b) => Number(b.pts || 0) - Number(a.pts || 0));
+            withRank = ranked.map((x, idx) => ({
+              openId: x.openId,
+              roundResult: x.isWin === true ? 1 : (x.isWin === false ? 2 : 0),
+              score: Number(x.pts || 0),
+              rank: idx + 1,
+              winningStreakCount: 0,
+              winningPoints: ""
+            }));
           }
           if (withRank.length > 0) {
             await roundUploadUserResultBatch({ appid, roomId, roundId, anchorOpenId, userList: withRank });
