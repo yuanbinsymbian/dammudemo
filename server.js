@@ -689,6 +689,11 @@ async function fetchLiveInfoByToken(token, overrideXToken) {
 // 参考文档：https://developer.open-douyin.com/docs/resource/zh-CN/interaction/develop/server/live-room-scope/data-open/start-task
 async function startLiveDataTask(appid, roomid, msgType) {
   try {
+    if (String(roomid) === String(DEBUG_ROOMID)) {
+      const payload = { appid: String(appid), msg_type: String(msgType), roomid: String(roomid) };
+      console.log('http_task_start_debug_skip', { payload, ts: Date.now() });
+      return { err_no: 0, err_msg: 'debug_skip', data: { task_id: 'debug_task', status: 3 } };
+    }
     const at = await fetchAccessToken(false);
     let xToken = at && at.access_token ? at.access_token : null;
     if (!xToken) {
@@ -715,6 +720,11 @@ async function startLiveDataTask(appid, roomid, msgType) {
 // 参考文档：https://developer.open-douyin.com/docs/resource/zh-CN/interaction/develop/server/live-room-scope/user-team-select/sync-game-state
 async function roundSyncStatusStart({ appid, roomId, roundId, startTime, anchorOpenId }) {
   try {
+    if (String(roomId) === String(DEBUG_ROOMID)) {
+      const payload = { app_id: String(appid), room_id: String(roomId), round_id: Number(roundId), start_time: Number(startTime), status: 1, anchor_open_id: anchorOpenId ? String(anchorOpenId) : null };
+      console.log('http_round_sync_start_debug_skip', { payload, ts: Date.now() });
+      return { err_no: 0, err_msg: 'debug_skip', data: { status: 1 } };
+    }
     const at = await fetchAccessToken(false);
     let xToken = at && at.access_token ? at.access_token : null;
     if (!xToken) {
@@ -745,6 +755,12 @@ async function roundSyncStatusStart({ appid, roomId, roundId, startTime, anchorO
 // 参考文档：https://developer.open-douyin.com/docs/resource/zh-CN/interaction/develop/server/live-room-scope/user-team-select/sync-game-state
 async function roundSyncStatusEnd({ appid, roomId, roundId, endTime, groupResultList, anchorOpenId }) {
   try {
+    if (String(roomId) === String(DEBUG_ROOMID)) {
+      const list = Array.isArray(groupResultList) ? groupResultList.map((it) => ({ group_id: String(it.groupId !== undefined ? it.groupId : it.group_id), result: Number(it.result !== undefined ? it.result : 0) })) : [];
+      const payload = { app_id: String(appid), room_id: String(roomId), round_id: Number(roundId), end_time: Number(endTime), status: 2, group_result_list: list, anchor_open_id: anchorOpenId ? String(anchorOpenId) : null };
+      console.log('http_round_sync_end_debug_skip', { payload, ts: Date.now() });
+      return { err_no: 0, err_msg: 'debug_skip', data: { status: 2, group_count: list.length } };
+    }
     const at = await fetchAccessToken(false);
     let xToken = at && at.access_token ? at.access_token : null;
     if (!xToken) {
@@ -786,6 +802,19 @@ async function roundUploadUserResultBatch({ appid, roomId, roundId, anchorOpenId
 // 参考文档：https://developer.open-douyin.com/docs/resource/zh-CN/interaction/develop/server/live-room-scope/user-scores-rank/user-data-report
 async function roundUploadUserResult({ appid, roomId, roundId, anchorOpenId, userList }) {
   try {
+    if (String(roomId) === String(DEBUG_ROOMID)) {
+      const list = Array.isArray(userList) ? userList.map((u) => ({
+        open_id: String(u.openId || u.userOpenId || ''),
+        round_result: Number(u.roundResult !== undefined ? u.roundResult : (u.isWin === true ? 1 : (u.isWin === false ? 2 : 0))),
+        score: Number(u.score || 0),
+        rank: Number(u.rank || 0),
+        winning_streak_count: Number(u.winningStreakCount || 0),
+        winning_points: String(u.winningPoints || '')
+      })).filter((x) => x.open_id) : [];
+      const payload = { app_id: String(appid), room_id: String(roomId), round_id: Number(roundId), user_list: list, anchor_open_id: anchorOpenId ? String(anchorOpenId) : null };
+      console.log('http_round_upload_user_result_debug_skip', { payload, ts: Date.now() });
+      return { err_no: 0, err_msg: 'debug_skip', data: { uploaded_count: list.length } };
+    }
     const at = await fetchAccessToken(false);
     let xToken = at && at.access_token ? at.access_token : null;
     if (!xToken) {
@@ -824,6 +853,16 @@ async function roundUploadUserResult({ appid, roomId, roundId, anchorOpenId, use
 // 参考文档：https://developer.open-douyin.com/docs/resource/zh-CN/interaction/develop/server/live-room-scope/user-scores-rank/game-list-report
 async function roundUploadRankList({ appid, roomId, roundId, anchorOpenId, rankList }) {
   try {
+    if (String(roomId) === String(DEBUG_ROOMID)) {
+      const list = Array.isArray(rankList) ? rankList.map((x) => ({
+        open_id: String(x.openId || x.userOpenId || ''),
+        score: Number(x.score || 0),
+        rank: Number(x.rank || 0)
+      })).filter((u) => u.open_id) : [];
+      const payload = { app_id: String(appid), room_id: String(roomId), round_id: Number(roundId), rank_list: list, anchor_open_id: anchorOpenId ? String(anchorOpenId) : null };
+      console.log('http_round_upload_rank_list_debug_skip', { payload, ts: Date.now() });
+      return { err_no: 0, err_msg: 'debug_skip', data: { uploaded_count: list.length } };
+    }
     const at = await fetchAccessToken(false);
     let xToken = at && at.access_token ? at.access_token : null;
     if (!xToken) {
@@ -859,6 +898,11 @@ async function roundUploadRankList({ appid, roomId, roundId, anchorOpenId, rankL
 // 参考文档：https://developer.open-douyin.com/docs/resource/zh-CN/interaction/develop/server/live-room-scope/user-scores-rank/finish-user-data-report
 async function roundCompleteUploadUserResult({ appid, roomId, roundId, anchorOpenId, completeTime }) {
   try {
+    if (String(roomId) === String(DEBUG_ROOMID)) {
+      const payload = { app_id: String(appid), room_id: String(roomId), round_id: Number(roundId), complete_time: Number(completeTime), anchor_open_id: anchorOpenId ? String(anchorOpenId) : null };
+      console.log('http_round_complete_upload_debug_skip', { payload, ts: Date.now() });
+      return { err_no: 0, err_msg: 'debug_skip', data: { completed: true } };
+    }
     const at = await fetchAccessToken(false);
     let xToken = at && at.access_token ? at.access_token : null;
     if (!xToken) {
@@ -889,6 +933,11 @@ async function roundCompleteUploadUserResult({ appid, roomId, roundId, anchorOpe
 // 参考文档：https://developer.open-douyin.com/docs/resource/zh-CN/interaction/develop/server/live-room-scope/user-team-select/report-camp-data
 async function uploadUserGroupInfo({ appid, openId, roomId, roundId, groupId }) {
   try {
+    if (String(roomId) === String(DEBUG_ROOMID)) {
+      const payload = { app_id: String(appid), group_id: String(groupId), open_id: String(openId), room_id: String(roomId), round_id: Number(roundId) };
+      console.log('http_upload_user_group_debug_skip', { payload, ts: Date.now() });
+      return { errcode: 0, errmsg: 'debug_skip' };
+    }
     const at = await fetchAccessToken(false);
     let xToken = at && at.access_token ? at.access_token : null;
     if (!xToken) {
