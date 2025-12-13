@@ -282,10 +282,12 @@ wss.on("connection", (socket) => {
           const prev = CURRENT_ROUND.get(String(roomId)) || 0;
           roundId = prev ? Number(prev) : 1;
         }
+        const startTimeCached = ROUND_START_TIME.get(`${String(roomId)}|${Number(roundId)}`) || null;
+        if (startTimeCached) { console.log("round_start_time_lookup", { roomId: String(roomId), roundId: Number(roundId), startTime: Number(startTimeCached), ts: Date.now() }); }
 
         // Report round end status to Douyin via SDK
         // 通过 SDK 上报对局结束状态到抖音服务器
-        const res = await roundSyncStatusEnd({ appid, roomId, roundId, endTime, groupResultList, anchorOpenId });
+        const res = await roundSyncStatusEnd({ appid, roomId, roundId, endTime, groupResultList, anchorOpenId, startTime: startTimeCached });
 
         // Update user stats based on participants' results
         // 根据参与用户的输赢与积分，更新用户积分与连胜
@@ -754,11 +756,11 @@ async function roundSyncStatusStart({ appid, roomId, roundId, startTime, anchorO
 // Round status sync (end)
 // 对局结束状态同步
 // 参考文档：https://developer.open-douyin.com/docs/resource/zh-CN/interaction/develop/server/live-room-scope/user-team-select/sync-game-state
-async function roundSyncStatusEnd({ appid, roomId, roundId, endTime, groupResultList, anchorOpenId }) {
+async function roundSyncStatusEnd({ appid, roomId, roundId, endTime, groupResultList, anchorOpenId, startTime }) {
   try {
     if (String(roomId) === String(DEBUG_ROOMID)) {
       const list = Array.isArray(groupResultList) ? groupResultList.map((it) => ({ group_id: String(it.groupId !== undefined ? it.groupId : it.group_id), result: Number(it.result !== undefined ? it.result : 0) })) : [];
-      const payload = { app_id: String(appid), room_id: String(roomId), round_id: Number(roundId), end_time: Number(endTime), status: 2, group_result_list: list, anchor_open_id: anchorOpenId ? String(anchorOpenId) : null };
+      const payload = { app_id: String(appid), room_id: String(roomId), round_id: Number(roundId), end_time: Number(endTime), start_time: startTime ? Number(startTime) : undefined, status: 2, group_result_list: list, anchor_open_id: anchorOpenId ? String(anchorOpenId) : null };
       console.log('http_round_sync_end_debug_skip', { payload, ts: Date.now() });
       return { err_no: 0, err_msg: 'debug_skip', data: { status: 2, group_count: list.length } };
     }
@@ -773,6 +775,7 @@ async function roundSyncStatusEnd({ appid, roomId, roundId, endTime, groupResult
     const headers = { 'content-type': 'application/json', 'x-token': String(xToken) };
     const list = Array.isArray(groupResultList) ? groupResultList.map((it) => ({ group_id: String(it.groupId !== undefined ? it.groupId : it.group_id), result: Number(it.result !== undefined ? it.result : 0) })) : [];
     const payload = { app_id: String(appid), room_id: String(roomId), round_id: Number(roundId), end_time: Number(endTime), status: 2, group_result_list: list };
+    if (startTime) payload.start_time = Number(startTime);
     if (anchorOpenId) payload.anchor_open_id = String(anchorOpenId);
     console.log('http_round_sync_end_call', { url, app_id: String(appid), room_id: String(roomId), round_id: Number(roundId), end_time: Number(endTime), status: 2, group_count: list.length, anchor_open_id: anchorOpenId ? String(anchorOpenId) : null, ts: Date.now() });
     console.log('http_round_sync_end_payload', { payload, ts: Date.now() });
