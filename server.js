@@ -283,11 +283,12 @@ wss.on("connection", (socket) => {
           roundId = prev ? Number(prev) : 1;
         }
         const startTimeCached = ROUND_START_TIME.get(`${String(roomId)}|${Number(roundId)}`) || null;
-        if (startTimeCached) { console.log("round_start_time_lookup", { roomId: String(roomId), roundId: Number(roundId), startTime: Number(startTimeCached), ts: Date.now() }); }
+        const startTimeFinal = startTimeCached ? Number(startTimeCached) : Number(endTime);
+        console.log("round_start_time_lookup", { roomId: String(roomId), roundId: Number(roundId), startTime: startTimeFinal, fromCache: !!startTimeCached, ts: Date.now() });
 
         // Report round end status to Douyin via SDK
         // 通过 SDK 上报对局结束状态到抖音服务器
-        const res = await roundSyncStatusEnd({ appid, roomId, roundId, endTime, groupResultList, anchorOpenId, startTime: startTimeCached });
+        const res = await roundSyncStatusEnd({ appid, roomId, roundId, endTime, groupResultList, anchorOpenId, startTime: startTimeFinal });
 
         // Update user stats based on participants' results
         // 根据参与用户的输赢与积分，更新用户积分与连胜
