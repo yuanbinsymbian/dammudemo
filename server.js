@@ -309,12 +309,12 @@ wss.on("connection", (socket) => {
         try {
           const ranked = [...updatedUsers].sort((a, b) => Number(b.pts || 0) - Number(a.pts || 0));
           const withRank = ranked.map((x, idx) => ({
-            openId: x.openId,
-            roundResult: x.isWin === true ? 1 : (x.isWin === false ? 2 : 0),
+            open_id: x.openId,
+            round_result: x.isWin === true ? 1 : (x.isWin === false ? 2 : 0),
             score: Number(x.pts || 0),
             rank: idx + 1,
-            winningStreakCount: Number(x.streak || 0),
-            winningPoints: ""
+            winning_streak_count: Number(x.streak || 0),
+            winning_points: ""
           }));
           try {
             const preview = withRank.slice(0, 20);
