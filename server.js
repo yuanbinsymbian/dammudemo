@@ -235,6 +235,7 @@ wss.on("connection", (socket) => {
         }
         const res = await roundSyncStatusStart({ appid, roomId, roundId, startTime, anchorOpenId });
         try { CURRENT_ROUND.set(String(roomId), Number(roundId)); } catch (_) {}
+        try { ROUND_START_TIME.set(`${String(roomId)}|${Number(roundId)}`, Number(startTime)); console.log("round_start_time_set", { roomId: String(roomId), roundId: Number(roundId), startTime: Number(startTime), ts: Date.now() }); } catch (_) {}
         console.log("ws_startRound", { roomId, roundId, startTime, ts: Date.now() });
         wsSend(socket, { type: "startRound_ok", roomId, roundId, body: res });
       })();
@@ -976,6 +977,7 @@ function groupIdFromMessage(msg) {
 const USER_ROUND_GROUP = new Map();
 const CURRENT_ROUND = new Map();
 const ROOM_ANCHOR_OPEN_ID = new Map();
+const ROUND_START_TIME = new Map();
 
 // Key builder for USER_ROUND_GROUP
 // 构造用户分组键（USER_ROUND_GROUP）
