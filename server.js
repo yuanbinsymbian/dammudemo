@@ -293,24 +293,28 @@ wss.on("connection", (socket) => {
         // Update user stats based on participants' results
         // 根据参与用户的输赢与积分，更新用户积分与连胜
         const users = Array.isArray(data.users) ? data.users : [];
+        const updatedUsers = [];
         for (const u of users) {
           const oid = String(u.openId || u.userOpenId || "");
           const pts = Number(u.addPoints || u.points || 0);
           const isWin = u.isWin === true ? true : (u.isWin === false ? false : null);
-          if (oid) await updateUserStats(oid, pts, isWin);
+          if (oid) {
+            const resUpd = await updateUserStats(oid, pts, isWin);
+            if (resUpd && resUpd.openId) updatedUsers.push(resUpd);
+          }
         }
 
         // Build per-user round result payload and upload to Douyin ranking
         // 构建本局用户结果并上报到抖音排行榜
         try {
-          const ranked = [...users]
+          const baseList = updatedUsers.length > 0 ? updatedUsers.map((u)=>({ openId: u.openId, score: Number(u.pts||0), isWin: u.isWin })) : [...users]
             .map((u) => ({
               openId: String(u.openId || u.userOpenId || ""),
               score: Number(u.addPoints || u.points || 0),
               isWin: (u.isWin === true ? true : (u.isWin === false ? false : null))
             }))
             .filter((x) => !!x.openId);
-          ranked.sort((a, b) => b.score - a.score);
+          const ranked = baseList.sort((a, b) => b.score - a.score);
           const withRank = [];
           for (let idx = 0; idx < ranked.length; idx++) {
             const x = ranked[idx];
@@ -1122,8 +1126,7 @@ async function updateUserStats(openId, addPoints, isWin) {
     const reduce = Math.max(1, Math.floor(streak * 0.2));
     streak = Math.max(0, streak - reduce);
   }
-  const next = { points, streak };
-  // USER_CORE_STATS.set(oid, next);
+  const next = { openId: oid, pts: inc, isWin: (isWin === true ? true : (isWin === false ? false : null)), score: points, streak };
   await updateUserCoreStats(oid, points, streak);
-  return { err_no: 0, err_msg: "ok", data: next };
+  return next;
 }
