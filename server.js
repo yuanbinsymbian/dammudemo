@@ -20,7 +20,7 @@ setInterval(async () => {
   } catch (error) {
     console.error('世界榜单定时任务执行失败:', error);
   }
-}, 600000); // 600000毫秒 = 10分钟
+}, /*600000*/5000); // 600000毫秒 = 10分钟
 
 // Basic server setup
 // 基本服务器配置
