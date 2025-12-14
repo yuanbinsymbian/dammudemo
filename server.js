@@ -322,14 +322,14 @@ wss.on("connection", (socket) => {
         // Build per-user round result payload and upload to Douyin ranking
         // 构建本局用户结果并上报到抖音排行榜
         try {
-          const ranked = [...updatedUsers].sort((a, b) => Number(b.pts || 0) - Number(a.pts || 0));
+          const ranked = [...updatedUsers].sort((a, b) => Number(b.score || 0) - Number(a.score || 0));
           const withRank = ranked.map((x, idx) => ({
             open_id: x.openId,
             round_result: x.isWin === true ? 1 : (x.isWin === false ? 2 : 0),
-            score: Number(x.pts || 0),
+            score: x.score || 0,
             rank: idx + 1,
             winning_streak_count: Number(x.streak || 0),
-            winning_points: ""
+            winning_points: x.points || 0
           }));
           try {
             const preview = withRank.slice(0, 20);
@@ -1114,7 +1114,7 @@ async function updateUserStats(openId, addPoints, isWin) {
     const reduce = Math.max(1, Math.floor(streak * 0.2));
     streak = Math.max(0, streak - reduce);
   }
-  const next = { openId: oid, pts: inc, isWin: (isWin === true ? true : (isWin === false ? false : null)), score: points, streak };
+  const next = { openId: oid, score: inc, isWin: (isWin === true ? true : (isWin === false ? false : null)), points, streak };
   await updateUserCoreStats(oid, points, streak);
   return next;
 }

@@ -1,0 +1,24 @@
+{
+  "app_id": "ttbb4bcdf624465c8510",
+  "round_id": 1,
+  "anchor_open_id": "_0004yuIvStM4Jx1mX_8IR-8tIh36eRJqwvU",
+  "room_id": "7583583282381671208",
+  "user_list": [
+        {
+      "open_id": "_000__cfadIxH-OIGYaAHW4U_jbtJbzwAFNe",
+      "round_result": 1,
+      "score": 50,
+      "rank": 1,
+      "winning_streak_count": 6,
+      "winning_points": 10
+    },
+    {
+      "open_id": "_0004yuIvStM4Jx1mX_8IR-8tIh36eRJqwvU",
+      "round_result": 2,
+      "score": 0,
+      "rank": 2,
+      "winning_streak_count": 0,
+      "winning_points": 10
+    }
+  ]
+}
