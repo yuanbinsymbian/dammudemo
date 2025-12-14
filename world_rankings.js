@@ -26,15 +26,13 @@ const pool = mysql.createPool({
 
 // 查询数据库所有按积分从高到底排序后的用户榜单数据
 async function queryWorldRankings() {
-  return new Promise((resolve, reject) => {
-    pool.query('SELECT open_id, points, streak FROM user_core_stats ORDER BY points DESC', (err, results) => {
-      if (err) {
-        reject(err);
-        return;
-      }
-      resolve(results);
-    });
-  });
+  try {
+    const [results] = await pool.query('SELECT open_id, points, streak FROM user_core_stats ORDER BY points DESC');
+    return results;
+  } catch (err) {
+    console.error('查询用户榜单数据失败:', err);
+    throw err;
+  }
 }
 
 // 处理世界榜单数据
