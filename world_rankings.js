@@ -46,7 +46,7 @@ async function processWorldRankings(accessToken,appId) {
       console.error('accessToken or appId is missing');
       return;
     }
-    let isOnlineVersion = false;    //TODO如何确定线上表单
+    let isOnlineVersion = true;    //TODO如何确定线上表单
     const completeTime = Math.floor(Date.now() / 1000);
 
     //1. 调用setWorldRankVersion方法设置当前生效的世界榜单版本
