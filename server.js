@@ -808,14 +808,7 @@ async function roundUploadUserResultBatch({ appid, roomId, roundId, anchorOpenId
 async function roundUploadUserResult({ appid, roomId, roundId, anchorOpenId, userList }) {
   try {
     if (String(roomId) === String(DEBUG_ROOMID)) {
-      const list = Array.isArray(userList) ? userList.map((u) => ({
-        open_id: String(u.open_id || ''),
-        round_result: Number(u.round_result || 0),
-        score: Number(u.score || 0),
-        rank: Number(u.rank || 0),
-        winning_streak_count: Number(u.winning_streak_count || 0),
-        winning_points: String(u.winning_points || '')
-      })).filter((x) => x.open_id) : [];
+      const list = Array.isArray(userList) ? userList.filter((u) => u && String(u.open_id || '')).map((u) => ({ ...u })) : [];
       const payload = { app_id: String(appid), room_id: String(roomId), round_id: Number(roundId), user_list: list, anchor_open_id: anchorOpenId ? String(anchorOpenId) : null };
       console.log('http_round_upload_user_result_debug_skip', { payload, ts: Date.now() });
       return { err_no: 0, err_msg: 'debug_skip', data: { uploaded_count: list.length } };
@@ -829,14 +822,7 @@ async function roundUploadUserResult({ appid, roomId, roundId, anchorOpenId, use
     }
     const url = 'https://webcast.bytedance.com/api/gaming_con/round/upload_user_result';
     const headers = { 'content-type': 'application/json', 'x-token': String(xToken) };
-    const list = Array.isArray(userList) ? userList.map((u) => ({
-      open_id: String(u.open_id || ''),
-      round_result: Number(u.round_result || 0),
-      score: Number(u.score || 0),
-      rank: Number(u.rank || 0),
-      winning_streak_count: Number(u.winning_streak_count || 0),
-      winning_points: String(u.winning_points || '')
-    })).filter((x) => x.open_id) : [];
+    const list = Array.isArray(userList) ? userList.filter((u) => u && String(u.open_id || '')).map((u) => ({ ...u })) : [];
     const payload = { app_id: String(appid), room_id: String(roomId), round_id: Number(roundId), user_list: list };
     if (anchorOpenId) payload.anchor_open_id = String(anchorOpenId);
     console.log('http_round_upload_user_result_call', { url, app_id: String(appid), room_id: String(roomId), round_id: Number(roundId), count: list.length, anchor_open_id: anchorOpenId ? String(anchorOpenId) : null, ts: Date.now() });
