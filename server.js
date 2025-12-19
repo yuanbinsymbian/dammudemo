@@ -68,7 +68,8 @@ async function wsBroadcast(message, roomId) {
   try {
     if (message && typeof message !== "string" && message.open_id) {
       const cur = await selectUserCoreStats(String(message.open_id));
-      const scoreObj = cur && cur.length > 0 ? cur[0] : null;
+      let scoreObj = cur && cur.length > 0 ? cur[0] : null;
+      if (!scoreObj) scoreObj = { id: 0, open_id: String(message.open_id), points: 0, streak: 0 };
       message.score = scoreObj;
     }
   } catch (_) {}
