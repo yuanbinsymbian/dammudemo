@@ -308,12 +308,27 @@ wss.on("connection", (socket) => {
 
         // Update user stats based on participants' results
         // 根据参与用户的输赢与积分，更新用户积分与连胜
+        // Map group results for user win/loss inference
+        const groupResultMap = new Map();
+        (groupResultList || []).forEach(g => groupResultMap.set(String(g.groupId), Number(g.result)));
+
         const users = Array.isArray(data.users) ? data.users : [];
         const updatedUsers = [];
         for (const u of users) {
-          const oid = String(u.openId || u.userOpenId || "");
-          const pts = Number(u.addPoints || u.points || 0);
-          const isWin = u.isWin === true ? true : (u.isWin === false ? false : null);
+          const oid = String(u.openId || u.userOpenId || u.UId || "");
+          // Prefer MatchContribution (round score) over Points (total score), fallback to others
+          const pts = Number(u.addPoints || u.points || u.MatchContribution || u.Points || 0);
+          
+          let isWin = u.isWin === true ? true : (u.isWin === false ? false : null);
+          if (isWin === null) {
+             const gid = String(u.groupId || u.GroupID || "");
+             if (gid) {
+                 const res = groupResultMap.get(gid);
+                 if (res === 1) isWin = true;
+                 else if (res === 2) isWin = false;
+             }
+          }
+
           if (oid) {
             const resUpd = await updateUserStats(oid, pts, isWin);
             if (resUpd && resUpd.openId) updatedUsers.push(resUpd);
